@@ -4,11 +4,11 @@ import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Shield, List, Gauge, Users, TrendingUp, Zap, LineChart as LucideChart, MousePointer2, Radio } from 'lucide-react';
 
-// CARGA DINÁMICA CORREGIDA: Sin el }); extra en medio del bloque
+// CARGA DINÁMICA CORREGIDA: Eliminamos el cierre prematuro de la línea 11
 const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), { 
   ssr: false,
   loading: () => <div className="h-[150px] w-full bg-slate-900/20 animate-pulse rounded" />
-}); // 
+});
 
 // COMPONENTE: EFECTO MATRIX
 const MatrixLoading = () => (
@@ -20,6 +20,7 @@ const MatrixLoading = () => (
     </div>
     <Zap className="text-blue-500 animate-bounce mb-4 relative z-10" size={48} />
     <p className="text-blue-400 tracking-[0.5em] animate-pulse relative z-10 font-black uppercase">Establishing_NE_Uplink</p>
+    <p className="text-slate-600 text-[10px] mt-2 relative z-10 uppercase italic">Encrypting Data Feed...</p>
   </div>
 );
 
@@ -100,16 +101,12 @@ export default function PatriotsDashboard() {
         });
 
         setGameData({
-          status: "LIVE",
-          teamName: "NEW ENGLAND PATRIOTS",
+          status: "LIVE", teamName: "NEW ENGLAND PATRIOTS",
           score: { patriots: patsTeam.score, opponent: oppTeam.score, oppName: oppTeam.team.abbreviation },
           clock: `${patsEvent.status.displayClock} / ${patsEvent.status.period}Q`,
           possession: sit?.possession === patsTeam.id ? 'NE' : oppTeam.team.abbreviation,
           yardLine: sit?.lastPlay?.text.includes('at NE') ? `NE ${sit.yardLine}` : `OPP ${sit.yardLine}`,
-          down: sit?.down || 0,
-          distance: sit?.distance || 0,
-          winProb: patsTeam.winProbability || 50,
-          lastPlays: sit?.lastPlay ? [{ id: Date.now(), text: sit.lastPlay.text }] : [],
+          down: sit?.down || 0, distance: sit?.distance || 0, winProb: patsTeam.winProbability || 50,
           playerMonitor: { ...selectedPlayer, ...playerStats },
           roster: { 
             offense: [{ pos: "QB", name: "Drake Maye" }, { pos: "RB", name: "Rhamondre Stevenson" }, { pos: "WR", name: "Ja'Lynn Polk" }],
@@ -118,17 +115,11 @@ export default function PatriotsDashboard() {
         });
       } else {
         setGameData({
-          status: "OFFLINE",
-          teamName: "NEW ENGLAND PATRIOTS",
+          status: "OFFLINE", teamName: "NEW ENGLAND PATRIOTS",
           score: { patriots: "0", opponent: "0", oppName: "TBD" },
-          clock: "NO_GAME_ACTIVE",
-          possession: "N/A", yardLine: "50", down: 0, distance: 0, winProb: 0,
-          lastPlays: [{ id: 1, text: "System on standby. Waiting for signal..." }],
+          clock: "NO_GAME_ACTIVE", possession: "N/A", yardLine: "50", down: 0, distance: 0, winProb: 0,
           playerMonitor: { ...selectedPlayer, yards: "0", tds: "0", extra: "0/0", label: "YARDS" },
-          roster: { 
-            offense: [{ pos: "QB", name: "Drake Maye" }, { pos: "RB", name: "R. Stevenson" }],
-            defense: [{ pos: "CB", name: "C. Gonzalez" }]
-          }
+          roster: { offense: [{ pos: "QB", name: "Drake Maye" }, { pos: "RB", name: "R. Stevenson" }], defense: [{ pos: "CB", name: "C. Gonzalez" }] }
         });
       }
       setLoading(false);
@@ -188,12 +179,8 @@ export default function PatriotsDashboard() {
           </section>
 
           <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm">
-             <div className="flex justify-between items-center mb-4">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 italic">Target Selector</span>
-                <div className="flex gap-1">
-                   <button onClick={() => setRosterTab('offense')} className={`text-[9px] px-2 py-1 ${rosterTab === 'offense' ? 'bg-blue-600' : 'bg-slate-800'}`}>OFF</button>
-                   <button onClick={() => setRosterTab('defense')} className={`text-[9px] px-2 py-1 ${rosterTab === 'defense' ? 'bg-red-600' : 'bg-slate-800'}`}>DEF</button>
-                </div>
+             <div className="flex justify-between items-center mb-4 text-blue-400">
+                <span className="text-[10px] font-bold uppercase tracking-widest italic">Target Selector</span>
              </div>
              <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-blue-900">
                {gameData.roster[rosterTab].map((p: any, i: number) => (
@@ -216,10 +203,10 @@ export default function PatriotsDashboard() {
               <div className="text-right border-r-4 border-blue-600 pr-6"><p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Win Prob</p><p className="text-4xl font-black leading-none">{gameData.winProb}%</p></div>
             </div>
             <div className="grid grid-cols-4 gap-4 mb-8">
-               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase">Down</p><p className="text-2xl font-black italic">{gameData.down}</p></div>
-               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase">To Go</p><p className="text-2xl font-black text-yellow-400 italic">{gameData.distance}</p></div>
-               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase">Ball On</p><p className="text-2xl font-black italic">{gameData.yardLine}</p></div>
-               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase font-bold">Pos</p><p className="text-2xl font-black text-blue-400 italic">{gameData.possession}</p></div>
+               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase italic">Down</p><p className="text-2xl font-black">{gameData.down}</p></div>
+               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase italic">To Go</p><p className="text-2xl font-black text-yellow-400">{gameData.distance}</p></div>
+               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase italic">Ball On</p><p className="text-2xl font-black">{gameData.yardLine}</p></div>
+               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase font-bold uppercase italic">Pos</p><p className="text-2xl font-black text-blue-400">{gameData.possession}</p></div>
             </div>
             <TacticalField yardLine={gameData.yardLine} distance={gameData.distance} possession={gameData.possession} />
           </section>
@@ -230,10 +217,9 @@ export default function PatriotsDashboard() {
                 <p className="text-[10px] text-slate-500 uppercase font-black mb-1 italic">Target Monitoring:</p>
                 <h3 className="text-4xl font-black text-white italic tracking-tighter leading-none">{gameData.playerMonitor.name} <span className="text-blue-500 text-lg ml-2">[{gameData.playerMonitor.pos}]</span></h3>
               </div>
-              <div className="flex gap-12">
+              <div className="flex gap-12 text-center">
                 <div className="text-center"><p className="text-[10px] text-slate-500 font-bold mb-1 uppercase italic tracking-widest">{gameData.playerMonitor.label || "YARDS"}</p><p className="text-5xl font-black text-white tracking-tighter leading-none">{gameData.playerMonitor.yards}</p></div>
                 <div className="text-center"><p className="text-[10px] text-slate-500 font-bold mb-1 uppercase italic tracking-widest">TOUCHDOWNS</p><p className="text-5xl font-black text-red-500 tracking-tighter leading-none">{gameData.playerMonitor.tds}</p></div>
-                <div className="text-center"><p className="text-[10px] text-slate-500 font-bold mb-1 uppercase italic tracking-widest">DETAILS</p><p className="text-xl font-black text-blue-400 mt-2">{gameData.playerMonitor.extra}</p></div>
               </div>
             </div>
           </section>
