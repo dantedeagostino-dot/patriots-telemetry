@@ -4,12 +4,12 @@ import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Shield, List, Gauge, Users, TrendingUp, Zap, LineChart as LucideChart, MousePointer2, Radio } from 'lucide-react';
 
-// CARGA DINÁMICA: Importamos el archivo que creamos recién
-// CARGA DINÁMICA: Importamos el archivo sin cerrarlo antes de tiempo
+// CARGA DINÁMICA CORREGIDA: Se eliminó el cierre prematuro de la línea 11
 const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), { 
   ssr: false,
   loading: () => <div className="h-[150px] w-full bg-slate-900/20 animate-pulse rounded" />
 });
+
 // COMPONENTE: EFECTO MATRIX (Para el estado de carga)
 const MatrixLoading = () => {
   return (
@@ -20,8 +20,8 @@ const MatrixLoading = () => {
         ))}
       </div>
       <Zap className="text-blue-500 animate-bounce mb-4 relative z-10" size={48} />
-      <p className="text-blue-400 tracking-[0.5em] animate-pulse relative z-10 font-black">ESTABLISHING_NE_UPLINK</p>
-      <p className="text-slate-600 text-[10px] mt-2 relative z-10">ENCRYPTING DATA FEED...</p>
+      <p className="text-blue-400 tracking-[0.5em] animate-pulse relative z-10 font-black uppercase">Establishing_NE_Uplink</p>
+      <p className="text-slate-600 text-[10px] mt-2 relative z-10 uppercase">Encrypting Data Feed...</p>
     </div>
   );
 };
@@ -151,13 +151,11 @@ export default function PatriotsDashboard() {
 
   return (
     <main className="min-h-screen bg-[#000d16] text-slate-100 p-4 lg:p-8 font-mono overflow-x-hidden">
-      
-      {/* HEADER */}
-      <header className="flex flex-col lg:flex-row justify-between items-start border-b border-blue-900/50 pb-6 mb-8">
+      <header className="flex flex-col lg:flex-row justify-between items-start border-b border-blue-900/50 pb-6 mb-8 gap-4">
         <div className="flex items-center gap-5">
           <div className="bg-red-600 p-3 transform -skew-x-12"><Shield className="text-white fill-white" size={32} /></div>
           <div>
-            <h1 className="text-3xl lg:text-5xl font-black tracking-tighter leading-none italic">{gameData?.teamName}</h1>
+            <h1 className="text-3xl lg:text-5xl font-black tracking-tighter leading-none italic">{gameData.teamName}</h1>
             <div className="flex items-center gap-2 mt-2">
               <Radio size={12} className={gameData.status === 'LIVE' ? "text-green-500 animate-pulse" : "text-slate-600"} />
               <p className="text-blue-500 text-[10px] tracking-[0.4em] font-bold uppercase">{gameData.status}_SIGNAL</p>
@@ -166,25 +164,22 @@ export default function PatriotsDashboard() {
         </div>
         <div className="bg-slate-900/50 border border-blue-500/20 p-3 px-6 rounded-sm text-center">
           <p className="text-[9px] text-slate-500 mb-1 font-bold italic uppercase">Clock</p>
-          <p className="text-2xl font-black tracking-tighter">{gameData?.clock}</p>
+          <p className="text-2xl font-black tracking-tighter">{gameData.clock}</p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* COLUMNA IZQUIERDA */}
         <div className="lg:col-span-4 space-y-6">
-          <section className="bg-gradient-to-b from-slate-900 to-black border border-blue-900/40 p-8 rounded-sm text-center">
+          <section className="bg-gradient-to-b from-slate-900 to-black border border-blue-900/40 p-8 rounded-sm text-center shadow-2xl">
             <div className="flex justify-between items-center relative z-10">
-              <div><p className="text-blue-500 font-black mb-1 italic text-sm font-black">PATS</p><p className="text-8xl font-black tracking-tighter leading-none">{gameData.score.patriots}</p></div>
+              <div><p className="text-blue-500 font-black mb-1 italic text-sm">PATS</p><p className="text-8xl font-black tracking-tighter leading-none">{gameData.score.patriots}</p></div>
               <div className="text-slate-800 font-black text-2xl mx-2">VS</div>
               <div className="opacity-60">
-                <p className="text-slate-500 font-black mb-1 italic text-sm font-black">{gameData.score.oppName}</p><p className="text-8xl font-black tracking-tighter leading-none">{gameData.score.opponent}</p>
+                <p className="text-slate-500 font-black mb-1 italic text-sm">{gameData.score.oppName}</p><p className="text-8xl font-black tracking-tighter leading-none">{gameData.score.opponent}</p>
               </div>
             </div>
           </section>
 
-          {/* GRÁFICA DE TENDENCIA */}
           <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm min-h-[210px]">
              <div className="flex items-center gap-2 mb-4 text-blue-500">
                 <LucideChart size={16} />
@@ -195,7 +190,6 @@ export default function PatriotsDashboard() {
              </div>
           </section>
 
-          {/* ROSTER SELECTOR */}
           <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm">
              <div className="flex justify-between items-center mb-4">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 italic">Target Selector</span>
@@ -207,7 +201,7 @@ export default function PatriotsDashboard() {
              <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-blue-900">
                {gameData.roster[rosterTab].map((p: any, i: number) => (
                  <button key={i} onClick={() => setSelectedPlayer({ name: p.name, pos: p.pos })}
-                  className={`w-full flex justify-between p-2 text-[10px] border-b border-slate-900 transition-all ${selectedPlayer.name === p.name ? 'bg-blue-900/40 border-l-4 border-l-blue-500 text-white font-bold' : 'text-slate-500 hover:bg-slate-900'}`}
+                  className={`w-full flex justify-between p-2 text-[10px] border-b border-slate-900 transition-all ${selectedPlayer.name === p.name ? 'bg-blue-900/40 border-l-4 border-l-blue-500 text-white font-bold' : 'text-slate-400 hover:bg-slate-900'}`}
                  >
                    <span className="font-black w-6">{p.pos}</span>
                    <span className="flex-1 text-left ml-4 italic">{p.name}</span>
@@ -218,7 +212,6 @@ export default function PatriotsDashboard() {
           </section>
         </div>
 
-        {/* COLUMNA DERECHA */}
         <div className="lg:col-span-8 space-y-6">
           <section className="bg-[#02080e] border border-blue-900/30 p-8 rounded-sm shadow-2xl relative">
             <div className="flex justify-between items-center mb-8">
@@ -229,13 +222,13 @@ export default function PatriotsDashboard() {
                <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase">Down</p><p className="text-2xl font-black italic">{gameData.down}</p></div>
                <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase">To Go</p><p className="text-2xl font-black text-yellow-400 italic">{gameData.distance}</p></div>
                <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase">Ball On</p><p className="text-2xl font-black italic">{gameData.yardLine}</p></div>
-               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase font-bold">Pos</p><p className="text-2xl font-black text-blue-400 italic">{gameData.possession}</p></div>
+               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase font-bold uppercase">Pos</p><p className="text-2xl font-black text-blue-400 italic">{gameData.possession}</p></div>
             </div>
             <TacticalField yardLine={gameData.yardLine} distance={gameData.distance} possession={gameData.possession} />
           </section>
 
           <section className="bg-gradient-to-r from-slate-950 to-blue-950/20 border-t-4 border-red-600 p-8 shadow-2xl relative group">
-            <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6 text-center md:text-left">
+            <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
               <div>
                 <p className="text-[10px] text-slate-500 uppercase font-black mb-1 italic">Target Monitoring:</p>
                 <h3 className="text-4xl font-black text-white italic tracking-tighter leading-none">{gameData.playerMonitor.name} <span className="text-blue-500 text-lg ml-2">[{gameData.playerMonitor.pos}]</span></h3>
