@@ -4,27 +4,24 @@ import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Shield, List, Gauge, Users, TrendingUp, Zap, LineChart as LucideChart, MousePointer2, Radio } from 'lucide-react';
 
-// CARGA DINÁMICA CORREGIDA: Se eliminó el cierre prematuro de la línea 11
+// CARGA DINÁMICA CORREGIDA: Sin el }); extra en medio del bloque
 const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), { 
   ssr: false,
   loading: () => <div className="h-[150px] w-full bg-slate-900/20 animate-pulse rounded" />
 });
 
-// COMPONENTE: EFECTO MATRIX (Para el estado de carga)
-const MatrixLoading = () => {
-  return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono overflow-hidden relative">
-      <div className="absolute inset-0 opacity-20 pointer-events-none text-green-500 text-[10px] leading-none overflow-hidden break-all">
-        {Array(20).fill("01101001010110PATS0101010101010MAYEDRAKE010101010").map((s, i) => (
-          <p key={i} className="animate-pulse" style={{ animationDelay: `${i * 100}ms` }}>{s}</p>
-        ))}
-      </div>
-      <Zap className="text-blue-500 animate-bounce mb-4 relative z-10" size={48} />
-      <p className="text-blue-400 tracking-[0.5em] animate-pulse relative z-10 font-black uppercase">Establishing_NE_Uplink</p>
-      <p className="text-slate-600 text-[10px] mt-2 relative z-10 uppercase">Encrypting Data Feed...</p>
+// COMPONENTE: EFECTO MATRIX
+const MatrixLoading = () => (
+  <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono overflow-hidden relative">
+    <div className="absolute inset-0 opacity-20 pointer-events-none text-green-500 text-[10px] leading-none overflow-hidden break-all">
+      {Array(20).fill("01101001010110PATS0101010101010MAYEDRAKE010101010").map((s, i) => (
+        <p key={i} className="animate-pulse" style={{ animationDelay: `${i * 100}ms` }}>{s}</p>
+      ))}
     </div>
-  );
-};
+    <Zap className="text-blue-500 animate-bounce mb-4 relative z-10" size={48} />
+    <p className="text-blue-400 tracking-[0.5em] animate-pulse relative z-10 font-black uppercase">Establishing_NE_Uplink</p>
+  </div>
+);
 
 // COMPONENTE: CAMPO TÁCTICO
 const TacticalField = ({ yardLine, distance, possession }: any) => {
@@ -98,7 +95,7 @@ export default function PatriotsDashboard() {
 
         setScoreHistory((prev: any) => {
           const newPoint = { time: patsEvent.status.displayClock, pats: parseInt(patsTeam.score), opp: parseInt(oppTeam.score) };
-          if (prev.length > 0 && prev[prev.length - 1].pats === newPoint.pats && prev[prev.length - 1].opp === newPoint.opp) return prev;
+          if (prev.length > 0 && prev[prev.length - 1].pats === newPoint.pats) return prev;
           return [...prev, newPoint];
         });
 
@@ -222,7 +219,7 @@ export default function PatriotsDashboard() {
                <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase">Down</p><p className="text-2xl font-black italic">{gameData.down}</p></div>
                <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase">To Go</p><p className="text-2xl font-black text-yellow-400 italic">{gameData.distance}</p></div>
                <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase">Ball On</p><p className="text-2xl font-black italic">{gameData.yardLine}</p></div>
-               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase font-bold uppercase">Pos</p><p className="text-2xl font-black text-blue-400 italic">{gameData.possession}</p></div>
+               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase font-bold">Pos</p><p className="text-2xl font-black text-blue-400 italic">{gameData.possession}</p></div>
             </div>
             <TacticalField yardLine={gameData.yardLine} distance={gameData.distance} possession={gameData.possession} />
           </section>
