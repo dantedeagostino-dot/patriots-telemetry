@@ -8,7 +8,7 @@ import { Shield, List, Gauge, Users, TrendingUp, Zap, LineChart as LucideChart, 
 const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), { 
   ssr: false,
   loading: () => <div className="h-[150px] w-full bg-slate-900/20 animate-pulse rounded" />
-});
+}); // 
 
 // COMPONENTE: EFECTO MATRIX
 const MatrixLoading = () => (
