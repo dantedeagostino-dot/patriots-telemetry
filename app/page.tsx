@@ -5,10 +5,7 @@ import dynamic from 'next/dynamic';
 import { Shield, List, Gauge, Users, TrendingUp, Zap, LineChart as LucideChart, MousePointer2, Radio } from 'lucide-react';
 
 // CARGA DINÁMICA: Importamos el archivo que creamos recién
-const ScoreTrendChart = dynamic(() => import('@/app/ScoreTrendChart'), { 
-  ssr: false,
-  loading: () => <div className="h-[150px] w-full bg-slate-900/20 animate-pulse rounded" />
-});
+const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), { 
   ssr: false,
   loading: () => <div className="h-[150px] w-full bg-slate-900/20 animate-pulse rounded" />
 });
