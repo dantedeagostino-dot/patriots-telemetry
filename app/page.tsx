@@ -11,14 +11,15 @@ import {
 
 // --- 1. CONFIGURACIÓN ---
 const CONFIG = {
-  // 🔴 IMPORTANTE: Cuando tengas tu API Key de RapidAPI, pégala aquí.
-  // Mientras esté vacía, el sistema usará el SIMULADOR MANUAL (Botones arriba derecha).
-  API_KEY: "", 
+  // ✅ CAMBIO: Ahora lee desde el archivo .env automáticamente
+  // Usamos process.env.NEXT_PUBLIC_...
+  API_KEY: process.env.NEXT_PUBLIC_RAPIDAPI_KEY || "", 
   
   API_HOST: "nfl-api-data.p.rapidapi.com",
   TEAM_ID: "17", // New England Patriots
-  REFRESH_RATE: 15000 
+  REFRESH_RATE: 30000 // 30 segundos
 };
+;
 
 // --- 2. COMPONENTES AUXILIARES ---
 const StatRow = ({ label, h, a }: { label: string, h: number | string, a: number | string }) => (
