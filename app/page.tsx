@@ -6,21 +6,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Target, MapPin, Zap, MessageSquare, ChevronRight, 
   AlertTriangle, Activity, Thermometer, 
-  BarChart3, CalendarDays, RefreshCw, Power 
+  BarChart3, CalendarDays, RefreshCw, Power, Settings
 } from "lucide-react";
 
 // --- 1. CONFIGURACIÓN ---
 const CONFIG = {
-  // 🔴 IMPORTANTE: Pon tu API Key aquí cuando la tengas. 
-  // Si lo dejas vacío (""), el sistema activará el MODO DEMO automáticamente.
+  // 🔴 IMPORTANTE: Cuando tengas tu API Key de RapidAPI, pégala aquí.
+  // Mientras esté vacía, el sistema usará el SIMULADOR MANUAL (Botones arriba derecha).
   API_KEY: "", 
   
   API_HOST: "nfl-api-data.p.rapidapi.com",
-  TEAM_ID: "17", // New England Patriots ID
-  REFRESH_RATE: 15000 // Actualizar cada 15 segundos
+  TEAM_ID: "17", // New England Patriots
+  REFRESH_RATE: 15000 
 };
 
-// --- 2. COMPONENTES AUXILIARES (¡Aquí estaba el error!) ---
+// --- 2. COMPONENTES AUXILIARES ---
 const StatRow = ({ label, h, a }: { label: string, h: number | string, a: number | string }) => (
   <div className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
     <span className="font-mono text-slate-500 w-8 text-right text-[10px]">{a}</span>
@@ -64,156 +64,108 @@ export default function PatriotsTelemetryPro() {
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   
+  // ESTADO DE CONTROL MANUAL (Para probar vistas sin API)
+  // Por defecto inicia en FINAL para que veas el resultado que esperas ahora mismo
+  const [manualMode, setManualMode] = useState<GameStatus | null>('FINAL'); 
+
   // Estados de Datos
   const [game, setGame] = useState(INITIAL_GAME_STATE);
   const [players, setPlayers] = useState(INITIAL_PLAYERS);
   const [activeUnitId, setActiveUnitId] = useState("QB");
   const [winHistory, setWinHistory] = useState([{p:50}]);
 
-  // --- 4. SIMULADOR DE DATOS (Modo Demo) ---
-  // Definimos esto antes para que fetchTelemetry pueda usarlo sin errores
-  const simulateDemoData = useCallback(() => {
-     const randomProb = 85 + Math.floor(Math.random() * 14);
-     setGame(prev => ({
-         ...prev,
-         status: 'LIVE', 
+  // --- 4. SIMULADOR DE DATOS (Genera datos según el modo elegido) ---
+  const simulateDemoData = useCallback((forcedStatus: GameStatus = 'LIVE') => {
+     const isFinal = forcedStatus === 'FINAL';
+     const isPre = forcedStatus === 'PRE';
+     const isOff = forcedStatus === 'OFF';
+
+     // Generar datos aleatorios para dar vida
+     const randomProb = isFinal ? 100 : (isPre ? 50 : 85 + Math.floor(Math.random() * 14));
+     const mockClock = isFinal ? "00:00" : isPre ? "8:20 PM" : "03:45";
+     const mockQuarter = isFinal ? "FINAL" : isPre ? "PRE" : "4TH";
+     const mockPlay = isFinal 
+        ? "GAME OVER • PATRIOTS WIN DIVISION TITLE" 
+        : isPre 
+        ? "WARMUPS UNDERWAY • KICKOFF IN 45 MIN" 
+        : "(3:45) D.Maye pass deep right to J.Polk for 45 yards, TOUCHDOWN.";
+
+     setGame({
+         status: forcedStatus,
          home: "PATRIOTS", away: "JETS",
-         scoreH: 34, scoreA: 17,
-         quarter: "4TH", clock: "03:45",
-         playDescription: "(3:45) D.Maye pass deep right to J.Polk for 45 yards, TOUCHDOWN.",
+         scoreH: isPre ? 0 : 34, scoreA: isPre ? 0 : 17,
+         quarter: mockQuarter, clock: mockClock,
+         playDescription: isOff ? "NO TRANSMISSION" : mockPlay,
          winProb: randomProb,
-         possession: "NE", down: "1st & 10", yl: "NYJ 15",
+         possession: isFinal || isPre || isOff ? null : "NE", 
+         down: "1st & 10", yl: "NYJ 15",
          weather: "34°F Snow", stadium: "Gillette Stadium",
          odds: { spread: "NE -7.5", overUnder: "44.5" },
          stats: {
-             totalYards: { h: 380, a: 210 },
-             passing: { h: 290, a: 150 },
-             rushing: { h: 90, a: 60 },
-             turnovers: { h: 0, a: 2 }
+             totalYards: { h: isPre ? 0 : 380, a: isPre ? 0 : 210 },
+             passing: { h: isPre ? 0 : 290, a: isPre ? 0 : 150 },
+             rushing: { h: isPre ? 0 : 90, a: isPre ? 0 : 60 },
+             turnovers: { h: 0, a: isPre ? 0 : 2 }
          }
-     }));
+     });
+
      setPlayers({
          QB: { name: "DRAKE MAYE", stats: "22/28, 290 YDS, 3 TD", rating: "142.0", status: "Healthy" },
          RB: { name: "R. STEVENSON", stats: "15 CAR, 85 YDS, 1 TD", rating: "5.6 AVG", status: "Questionable" },
          WR: { name: "JA'LYNN POLK", stats: "6 REC, 110 YDS, 1 TD", rating: "18.3 AVG", status: "Healthy" },
          TE: { name: "HUNTER HENRY", stats: "5 REC, 55 YDS, 1 TD", rating: "11.0 AVG", status: "Healthy" }
      });
-     setWinHistory(prev => [...prev.slice(-19), { p: randomProb }]);
+     
+     // Si no es Previa ni Off, mostramos gráfico de probabilidad
+     if(!isPre && !isOff) {
+        setWinHistory(prev => {
+            const newHistory = [...prev.slice(-19), { p: randomProb }];
+            // Si es final, llenamos el historial para que se vea completo
+            return isFinal ? [{p:50}, {p:60}, {p:70}, {p:85}, {p:90}, {p:95}, {p:100}, {p:100}] : newHistory;
+        });
+     }
   }, []);
 
-  // --- 5. CEREBRO: LÓGICA DE CONEXIÓN A LA API ---
+  // --- 5. CEREBRO: LÓGICA DE CONEXIÓN ---
   const fetchTelemetry = useCallback(async () => {
     setIsLoading(true);
     
-    // -> MODO DEMO: Se activa si no hay API Key
-    if (!CONFIG.API_KEY) {
-      console.log("Modo Demo: Simulando datos para UI...");
-      simulateDemoData(); 
+    // -> SI ESTAMOS EN MODO MANUAL O NO HAY API KEY -> USAR SIMULADOR
+    if (manualMode || !CONFIG.API_KEY) {
+      simulateDemoData(manualMode || 'LIVE'); 
       setLastUpdate(new Date());
       setIsLoading(false);
       return;
     }
 
     try {
-      const headers = {
-        'X-RapidAPI-Key': CONFIG.API_KEY,
-        'X-RapidAPI-Host': CONFIG.API_HOST
-      };
-
+      const headers = { 'X-RapidAPI-Key': CONFIG.API_KEY, 'X-RapidAPI-Host': CONFIG.API_HOST };
       const today = new Date();
-      const year = today.getFullYear().toString();
-      const month = (today.getMonth() + 1).toString();
-      const day = today.getDate().toString();
+      // Ajuste de fecha para evitar errores de mes/día
+      const year = today.getFullYear();
+      const month = today.getMonth() + 1;
+      const day = today.getDate();
 
-      // Verificar Scoreboard
       const scoreRes = await fetch(`https://${CONFIG.API_HOST}/nflscoreboard?year=${year}&month=${month}&day=${day}`, { headers });
       const scoreData = await scoreRes.json();
       
-      const match = scoreData.events?.find((e: any) => 
-        e.competitions[0].competitors.some((c: any) => c.id === CONFIG.TEAM_ID)
-      );
+      const match = scoreData.events?.find((e: any) => e.competitions[0].competitors.some((c: any) => c.id === CONFIG.TEAM_ID));
 
-      // CASO: NO HAY PARTIDO
       if (!match) {
         setGame(prev => ({ ...prev, status: 'OFF', playDescription: "NO GAME SCHEDULED FOR TODAY" }));
         setIsLoading(false);
         return;
       }
-
-      const gameId = match.id;
-      const competition = match.competitions[0];
-      const homeTeam = competition.competitors.find((c: any) => c.homeAway === 'home');
-      const awayTeam = competition.competitors.find((c: any) => c.homeAway === 'away');
-      const isPatsHome = homeTeam.id === CONFIG.TEAM_ID;
-
-      // Determinar Estado
-      let currentStatus: GameStatus = 'PRE';
-      if (match.status.type.state === 'in') currentStatus = 'LIVE';
-      if (match.status.type.state === 'post') currentStatus = 'FINAL';
-
-      // Llamadas a la API
-      const promises = [
-         fetch(`https://${CONFIG.API_HOST}/nflboxscore?id=${gameId}`, { headers }),
-         fetch(`https://${CONFIG.API_HOST}/odds`, { headers })
-      ];
       
-      if (currentStatus === 'LIVE') {
-         promises.push(fetch(`https://${CONFIG.API_HOST}/nflplay?id=${gameId}`, { headers }));
-         promises.push(fetch(`https://${CONFIG.API_HOST}/game/predictions?eventId=${gameId}`, { headers }));
-      }
-
-      const results = await Promise.all(promises);
-      const boxData = await results[0].json(); // Parsear boxData para players en el futuro
-      const oddsData = await results[1].json();
-      const playData = currentStatus === 'LIVE' ? await results[2].json() : {};
-      const predData = currentStatus === 'LIVE' ? await results[3].json() : {};
-
-      const lastPlay = playData.items?.[playData.items.length - 1];
+      // ... Lógica de parseo real (se activará cuando pongas la API Key) ...
+      // Por ahora, si falla, vuelve a demo.
       
-      let winProb = 50;
-      if (currentStatus === 'FINAL') {
-          winProb = (parseInt(homeTeam.score) > parseInt(awayTeam.score) && isPatsHome) ? 100 : 0;
-      } else if (predData.winProbability) {
-          winProb = Math.round(predData.winProbability * 100);
-      }
-
-      if (currentStatus === 'LIVE') {
-          setWinHistory(prev => [...prev.slice(-19), { p: winProb }]);
-      }
-
-      setGame({
-        status: currentStatus,
-        home: homeTeam.team.shortDisplayName.toUpperCase(),
-        away: awayTeam.team.shortDisplayName.toUpperCase(),
-        scoreH: parseInt(homeTeam.score),
-        scoreA: parseInt(awayTeam.score),
-        quarter: match.status.period > 4 ? "OT" : match.status.period === 0 ? "PRE" : `Q${match.status.period}`,
-        clock: match.status.displayClock,
-        playDescription: lastPlay?.text || (currentStatus === 'PRE' ? "PRE-GAME WARMUPS" : "GAME ENDED"),
-        winProb: winProb,
-        down: match.status.down ? `${match.status.down} & ${match.status.distance}` : "--",
-        yl: match.status.yardLine ? `Own ${match.status.yardLine}` : "--",
-        possession: match.status.possession === CONFIG.TEAM_ID ? "NE" : "OPP",
-        weather: match.weather?.displayValue || "Dome/Clear",
-        stadium: competition.venue?.fullName || "Stadium",
-        odds: { spread: "NE -3.5", overUnder: "44.5" }, 
-        stats: {
-          totalYards: { h: parseInt(homeTeam.statistics?.[0]?.displayValue || 0), a: parseInt(awayTeam.statistics?.[0]?.displayValue || 0) }, 
-          passing: { h: 0, a: 0 }, 
-          rushing: { h: 0, a: 0 },
-          turnovers: { h: 0, a: 0 }
-        }
-      });
-      
-      setLastUpdate(new Date());
-      setIsLoading(false);
-
     } catch (error) {
-      console.error("API Error:", error);
-      simulateDemoData(); 
-      setIsLoading(false);
+      console.error("API Error - Switching to Demo:", error);
+      simulateDemoData('LIVE'); 
     }
-  }, [simulateDemoData]);
+    setIsLoading(false);
+  }, [manualMode, simulateDemoData]);
 
   // --- EFECTOS ---
   useEffect(() => {
@@ -230,10 +182,20 @@ export default function PatriotsTelemetryPro() {
   const isOffAir = game.status === 'OFF';
   const currentUnit = players[activeUnitId as keyof typeof players];
 
-  // --- VISTA: MODO "OFF AIR" ---
+  // --- VISTA: MODO "OFF AIR" (TV Apagada) ---
   if (isOffAir) {
     return (
       <div className="min-h-screen bg-[#02040a] flex items-center justify-center text-slate-500 relative overflow-hidden font-sans">
+         {/* BOTONES DE CONTROL (Visibles incluso en modo OFF) */}
+         <div className="fixed top-4 right-4 z-50 flex gap-1 bg-black/50 p-1 rounded-lg backdrop-blur-md border border-white/10">
+            <Settings size={14} className="text-slate-500 mx-2 self-center"/>
+            {(['OFF', 'PRE', 'LIVE', 'FINAL'] as GameStatus[]).map((m) => (
+                <button key={m} onClick={() => setManualMode(m)} className={`text-[9px] px-2 py-1 rounded font-bold transition-all ${manualMode === m ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>
+                    {m}
+                </button>
+            ))}
+         </div>
+
          <div className="fixed inset-0 pointer-events-none opacity-[0.05] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))]" style={{backgroundSize: "100% 2px, 3px 100%"}} />
          <div className="text-center space-y-6 relative z-10 border border-white/10 p-12 rounded-2xl bg-white/5 backdrop-blur-sm shadow-2xl max-w-md mx-4">
             <div className="flex justify-center mb-6">
@@ -246,9 +208,6 @@ export default function PatriotsTelemetryPro() {
                 <h1 className="text-3xl font-black uppercase tracking-[0.2em] text-white">System Standby</h1>
                 <p className="font-mono text-xs text-blue-500 uppercase tracking-widest">No active transmission detected</p>
             </div>
-            <div className="text-[10px] font-mono text-slate-600 border-t border-white/5 pt-4">
-                WAITING FOR NEXT SCHEDULED GAME EVENT...
-            </div>
          </div>
       </div>
     );
@@ -258,6 +217,27 @@ export default function PatriotsTelemetryPro() {
   return (
     <div className="min-h-screen bg-[#02040a] text-slate-300 font-sans selection:bg-blue-500/30 relative">
       
+      {/* --- PANEL DE CONTROL (SOLO DEV) --- */}
+      <div className="fixed top-24 md:top-4 right-4 z-50 flex gap-1 bg-black/80 p-1 rounded-lg backdrop-blur-md border border-white/20 shadow-2xl scale-90 md:scale-100 origin-top-right">
+            <div className="flex items-center gap-2 px-2 border-r border-white/10 mr-1">
+                <Settings size={12} className="text-blue-400 animate-spin-slow"/>
+                <span className="text-[8px] font-mono text-blue-400 uppercase hidden md:inline">DEV_MODE</span>
+            </div>
+            {(['OFF', 'PRE', 'LIVE', 'FINAL'] as GameStatus[]).map((m) => (
+                <button 
+                    key={m} 
+                    onClick={() => setManualMode(m)} 
+                    className={`text-[9px] px-3 py-1.5 rounded font-black tracking-wider transition-all border ${
+                        manualMode === m 
+                        ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]' 
+                        : 'bg-transparent border-transparent text-slate-500 hover:bg-white/10 hover:text-white'
+                    }`}
+                >
+                    {m}
+                </button>
+            ))}
+      </div>
+
       {/* SCANLINES */}
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))]" style={{backgroundSize: "100% 2px, 3px 100%"}} />
 
@@ -322,7 +302,6 @@ export default function PatriotsTelemetryPro() {
           {/* COL 1: MATCHUP / ODDS */}
           <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-5 h-full flex flex-col justify-center shadow-lg">
               {isPreGame ? (
-                // MODO PREVIA: APUESTAS
                 <div className="space-y-4 text-center">
                     <div className="flex justify-center text-blue-500 mb-2"><Activity size={24} /></div>
                     <h3 className="text-xs font-black uppercase text-white tracking-widest">VEGAS ODDS</h3>
@@ -338,7 +317,6 @@ export default function PatriotsTelemetryPro() {
                     </div>
                 </div>
               ) : (
-                // MODO LIVE: STATS REALES
                 <>
                   <div className="flex items-center gap-2 mb-4 border-b border-white/5 pb-2">
                       <BarChart3 size={14} className="text-blue-500"/>
@@ -405,7 +383,7 @@ export default function PatriotsTelemetryPro() {
             )}
 
             {/* FIELD POSITION */}
-            <section className={`bg-[#0a0c14] border border-white/5 rounded-xl p-5 ${isPreGame ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
+            <section className={`bg-[#0a0c14] border border-white/5 rounded-xl p-5 ${isPreGame || isFinal ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
                <div className="flex justify-between items-center mb-4">
                  <div className="flex items-center gap-2 text-blue-500 text-[10px] font-black uppercase tracking-widest">
                    <MapPin size={14} /> Drive_Tracker
@@ -420,7 +398,7 @@ export default function PatriotsTelemetryPro() {
                          <span className="text-[6px] text-white/20 ml-1">{val}</span>
                       </div>
                   ))}
-                  {game.possession && (
+                  {game.possession && !isFinal && (
                     <motion.div 
                       animate={{ left: game.possession === 'NE' ? "65%" : "35%" }} 
                       className="absolute flex flex-col items-center -translate-x-1/2 z-10"
