@@ -21,7 +21,6 @@ const PATS_ROSTER = [
 export default function PatriotsDashboard() {
   const [gameData, setGameData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [winProbHistory, setWinProbHistory] = useState<any>([]);
   const [standings, setStandings] = useState<any>([]);
   const [injuries, setInjuries] = useState<any>([]);
   const [selectedPlayer, setSelectedPlayer] = useState(PATS_ROSTER[0]);
@@ -37,12 +36,12 @@ export default function PatriotsDashboard() {
     };
 
     const now = new Date();
-    const y = "2024"; // Usamos 2024 como indica tu documento de actualización
+    const y = "2024"; // Temporada actual según tu doc
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const d = String(now.getDate()).padStart(2, '0');
 
     try {
-      // 1. BIO, STANDINGS E INJURIES (Rutas exactas del .docx)
+      // 1. CARGAR DATOS FIJOS (Rutas exactas del documento .docx)
       const [bioRes, standRes, injRes] = await Promise.all([
         fetch(`https://nfl-api1.p.rapidapi.com/player-bio?playerId=${selectedPlayer.id}`, options),
         fetch(`https://nfl-api1.p.rapidapi.com/nflstandings?year=${y}`, options),
@@ -53,13 +52,13 @@ export default function PatriotsDashboard() {
       const standData = await standRes.json();
       const injData = await injRes.json();
       
-      setPlayerBio(bioData);
-      // El documento no detalla la profundidad de standings, usamos opcionalidad para evitar crash
+      // Guardamos con seguridad (?. ) para evitar el error 'displayName'
+      setPlayerBio(bioData?.data || bioData);
       setStandings(standData?.children?.[0]?.children?.[0]?.standings?.entries || []);
-      // Según doc: data.injuries
+      // La doc dice que viene en data.injuries
       setInjuries(injData?.data?.injuries || []);
 
-      // 2. SCOREBOARD
+      // 2. MARCADOR (Ruta: /nflscoreboard)
       const scoreRes = await fetch(`https://nfl-api1.p.rapidapi.com/nflscoreboard?year=${y}&month=${m}&day=${d}`, options);
       const scoreData = await scoreRes.json();
       const patsEvent = scoreData?.events?.find((e: any) => 
@@ -79,8 +78,6 @@ export default function PatriotsDashboard() {
         const boxData = await boxRes.json();
         const oddsData = await oddsRes.json();
 
-        setWinProbHistory((prev: any) => [...prev.slice(-20), { time: patsEvent.status.displayClock, prob: patsTeam.winProbability || 50 }]);
-
         setGameData({
           isLive: patsEvent.status.type.state === 'in',
           status: patsEvent.status.type.detail,
@@ -93,7 +90,7 @@ export default function PatriotsDashboard() {
         setGameData({ status: "OFFLINE", isLive: false, score: { patriots: "0", opponent: "0", oppName: "TBD" } });
       }
     } catch (error) {
-      console.error("Link Error:", error);
+      console.error("Telemetry Link Failure:", error);
     } finally {
       setLoading(false);
     }
@@ -101,11 +98,11 @@ export default function PatriotsDashboard() {
 
   useEffect(() => {
     fetchProData();
-    const interval = setInterval(fetchProData, 20000);
+    const interval = setInterval(fetchProData, 30000);
     return () => clearInterval(interval);
   }, [fetchProData]);
 
-  if (loading) return <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono text-blue-500 animate-pulse"><Zap size={48} className="mb-4" />SYNCING_TELEMETRY...</div>;
+  if (loading) return <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono text-blue-500 animate-pulse"><Zap size={48} className="mb-4" />ESTABLISHING_PRO_LINK...</div>;
 
   return (
     <main className="min-h-screen bg-[#000d16] text-slate-100 p-4 lg:p-8 font-mono overflow-x-hidden">
@@ -113,7 +110,7 @@ export default function PatriotsDashboard() {
         <div className="flex items-center gap-5">
           <div className="bg-red-600 p-3 transform -skew-x-12"><Shield size={32} /></div>
           <div>
-            <h1 className="text-3xl font-black italic tracking-tighter uppercase text-white">Patriots_Command_v2.6</h1>
+            <h1 className="text-3xl font-black italic tracking-tighter uppercase">Patriots_Telemetry_v2.7</h1>
             <div className="flex gap-4 mt-2 text-[10px] font-bold">
                <span className={`${gameData?.isLive ? 'text-green-500 animate-pulse' : 'text-slate-600'} flex items-center gap-1`}><Activity size={12}/> {gameData?.isLive ? 'LIVE' : 'STANDBY'}</span>
                <span className="text-blue-400 uppercase tracking-widest"><CloudRain size={12} className="inline mr-1"/> {gameData?.weather?.displayValue || 'Stable'}</span>
@@ -157,35 +154,33 @@ export default function PatriotsDashboard() {
              <h3 className="text-[10px] font-black text-blue-400 mb-4 uppercase tracking-widest flex items-center gap-2"><ListChecks size={14}/> Standings</h3>
              <div className="space-y-2">
                 {standings.length > 0 ? standings.map((team: any, i: number) => (
-                  <div key={i} className={`flex justify-between text-[10px] p-2 border-l-2 ${team?.team?.abbreviation === 'NE' ? 'bg-blue-900/20 border-blue-500' : 'bg-white/5 border-slate-800'}`}>
-                    <span className="font-bold text-slate-300 uppercase">{team?.team?.displayName || 'Unknown'}</span>
+                  <div key={i} className="flex justify-between text-[10px] p-2 bg-white/5 border-l-2 border-slate-800">
+                    <span className="font-bold text-slate-300 uppercase">{team?.team?.displayName || 'Syncing...'}</span>
                   </div>
-                )) : <p className="text-[10px] text-slate-600 italic uppercase">Syncing division data...</p>}
+                )) : <p className="text-[10px] text-slate-600 italic">Syncing standings...</p>}
              </div>
           </section>
         </div>
 
         <div className="lg:col-span-8 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <section className="bg-[#020814] border border-blue-900/20 p-6 rounded-sm shadow-2xl">
-              <h2 className="text-lg font-black uppercase italic text-white mb-4">Tactical_Drive</h2>
-              <div className="bg-black/40 p-4 italic text-[11px] border-l-4 border-blue-600 min-h-[60px] text-slate-300 leading-relaxed">
-                {gameData?.situation?.lastPlay?.text || "Scanning stadium telemetry feed..."}
-              </div>
-            </section>
+          <section className="bg-[#020814] border border-blue-900/20 p-6 rounded-sm shadow-2xl">
+            <h2 className="text-lg font-black uppercase italic text-white mb-4">Tactical_Drive</h2>
+            <div className="bg-black/40 p-4 italic text-[11px] border-l-4 border-blue-600 min-h-[60px] text-slate-300 leading-relaxed">
+              {gameData?.situation?.lastPlay?.text || "Scanning stadium telemetry..."}
+            </div>
+          </section>
 
-            <section className="bg-slate-950 border border-slate-800 p-6 rounded-sm shadow-2xl">
-              <h2 className="text-lg font-black uppercase italic text-white mb-4 flex items-center gap-2 text-red-500"><Stethoscope size={18} /> Injury_Report</h2>
-              <div className="space-y-2">
-                {injuries.length > 0 ? injuries.map((inj: any, i: number) => (
-                  <div key={i} className="flex justify-between items-center text-[10px] border-b border-slate-900 pb-2 text-white">
-                    <span className="text-slate-300 font-bold">{inj?.athlete?.displayName || 'Scanning...'}</span>
-                    <span className="text-red-500 font-black uppercase">{inj?.status || 'Unknown'}</span>
-                  </div>
-                )) : <p className="text-[10px] text-slate-600 italic">Medical scanners clear.</p>}
-              </div>
-            </section>
-          </div>
+          <section className="bg-slate-950 border border-slate-800 p-6 rounded-sm shadow-2xl">
+            <h2 className="text-lg font-black uppercase italic text-white mb-4 flex items-center gap-2 text-red-500"><Stethoscope size={18} /> Injury_Report</h2>
+            <div className="space-y-2">
+              {injuries.length > 0 ? injuries.map((inj: any, i: number) => (
+                <div key={i} className="flex justify-between items-center text-[10px] border-b border-slate-900 pb-2 text-white">
+                  <span className="text-slate-300 font-bold">{inj?.athlete?.displayName || 'Unknown'}</span>
+                  <span className="text-red-500 font-black uppercase">{inj?.status || 'Active'}</span>
+                </div>
+              )) : <p className="text-[10px] text-slate-600 italic uppercase">Medical scann complete. All units active.</p>}
+            </div>
+          </section>
 
           <section className="bg-gradient-to-r from-slate-950 to-blue-950/20 border-t-2 border-red-600 p-6 shadow-2xl flex flex-col md:flex-row items-center gap-8 text-white">
              <div className="relative">
