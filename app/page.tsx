@@ -2,16 +2,17 @@
 
 import React, { useState, useEffect } from "react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
-import { motion } from "framer-motion";
-import { Target, Cpu, ChevronRight, Activity, MapPin, History, Zap, BarChart3 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Target, Cpu, ChevronRight, Activity, MapPin, History, Zap, MessageSquare, BarChart3 } from "lucide-react";
 
 export default function PatriotsTelemetryPro() {
   const [hasMounted, setHasMounted] = useState(false);
-  
-  // Estado con estructura real basada en nfl-api1
+  const [lastPlay, setLastPlay] = useState("Drake Maye pass short right to Hunter Henry for 12 yards, TOUCHDOWN.");
+
+  // Estado con toda la información recuperada de la API
   const [game, setGame] = useState({
     scoreNE: 35,
-    scoreOpp: 3,
+    scoreNYJ: 3,
     winProb: 98,
     teamStats: {
       totalYards: { ne: 342, opp: 112 },
@@ -23,7 +24,7 @@ export default function PatriotsTelemetryPro() {
       plays: 8,
       yards: 72,
       time: "04:12",
-      pos: 88, // Yardas en % para el mapa
+      pos: 88, // % para el mapa táctico
       down: "1st & Goal"
     },
     activeUnit: {
@@ -40,7 +41,7 @@ export default function PatriotsTelemetryPro() {
     <div className="min-h-screen bg-[#02040a] text-slate-300 p-4 lg:p-8 font-sans selection:bg-blue-500/30">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* --- HEADER: LIVE SCORE & STATUS --- */}
+        {/* --- HEADER: SCOREBOARD --- */}
         <div className="flex justify-between items-end border-b border-white/5 pb-6">
           <div className="space-y-1">
             <h1 className="text-3xl font-black italic tracking-tighter text-white uppercase">
@@ -48,25 +49,47 @@ export default function PatriotsTelemetryPro() {
             </h1>
             <div className="flex items-center gap-3">
               <span className="flex h-2 w-2 rounded-full bg-red-600 animate-pulse" />
-              <span className="text-[10px] font-bold text-slate-500 tracking-[0.3em] uppercase">Live Feed • Week 17 • 2Q 01:22</span>
+              <span className="text-[10px] font-bold text-slate-500 tracking-[0.3em] uppercase">
+                Week 17 • Live • 2nd Quarter • 01:22
+              </span>
             </div>
           </div>
           <div className="text-6xl font-black tracking-tighter text-white italic">
-            {game.scoreNE}<span className="text-blue-600">/</span>{game.scoreOpp}
+            {game.scoreNE}<span className="text-blue-600">/</span>{game.scoreNYJ}
           </div>
         </div>
+
+        {/* --- NUEVO: PLAY-BY-PLAY TICKER --- */}
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-blue-600/10 border border-blue-500/20 p-4 rounded-xl flex items-center gap-4"
+        >
+          <div className="bg-blue-500 p-2 rounded-lg">
+            <MessageSquare size={16} className="text-white" />
+          </div>
+          <div className="flex-1">
+            <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest block mb-1">Last Play Result</span>
+            <p className="text-sm font-bold text-white italic tracking-tight">{lastPlay}</p>
+          </div>
+          <div className="hidden md:block h-8 w-[1px] bg-white/10 mx-2" />
+          <div className="hidden md:block text-right">
+            <span className="text-[8px] font-bold text-slate-500 uppercase block">Drive Progress</span>
+            <span className="text-xs font-black text-white">{game.currentDrive.yards} YDS Gained</span>
+          </div>
+        </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* COLUMNA PRINCIPAL (ANALYTICS & TACTICAL) */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* WIN PROBABILITY SECTION */}
+            {/* WIN PROBABILITY */}
             <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-6 relative overflow-hidden shadow-2xl">
                <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center gap-2 text-blue-500">
                     <Activity size={14} strokeWidth={3} />
-                    <span className="text-[10px] font-black tracking-[0.2em] uppercase italic">Win_Probability_Trend</span>
+                    <span className="text-[10px] font-black tracking-[0.2em] uppercase italic">Win_Probability</span>
                   </div>
                   <span className="text-4xl font-black italic text-white">{game.winProb}%</span>
                </div>
@@ -89,7 +112,7 @@ export default function PatriotsTelemetryPro() {
                </div>
             </section>
 
-            {/* TEAM MATCHUP STATS (Recuperado de la API) */}
+            {/* TEAM MATCHUP STATS (Información recuperada) */}
             <section className="grid grid-cols-4 gap-4">
                {[
                  { label: "Total Yards", ne: game.teamStats.totalYards.ne, opp: game.teamStats.totalYards.opp },
@@ -111,35 +134,35 @@ export default function PatriotsTelemetryPro() {
             <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-6">
                <div className="flex justify-between items-center mb-6">
                   <div className="flex items-center gap-2 text-blue-500 text-[10px] font-black uppercase tracking-widest">
-                    <MapPin size={14} /> Tactical_Positioning
+                    <MapPin size={14} /> Tactical_Drive
                   </div>
-                  <div className="flex gap-4 text-[9px] font-bold text-slate-500 uppercase tracking-tighter">
+                  <div className="flex gap-4 text-[9px] font-bold text-slate-500 uppercase">
                      <span className="text-blue-500/50">Plays: {game.currentDrive.plays}</span>
-                     <span>Yards: {game.currentDrive.yards}</span>
+                     <span>Total Yds: {game.currentDrive.yards}</span>
                   </div>
                </div>
-               <div className="h-10 w-full bg-slate-900/50 rounded-lg border border-white/5 relative flex items-center px-2">
+               <div className="h-10 w-full bg-slate-900/50 rounded-lg border border-white/5 relative flex items-center px-2 shadow-inner">
                   <motion.div animate={{ left: `${game.currentDrive.pos}%` }} className="absolute flex flex-col items-center -translate-x-1/2">
                     <div className="bg-blue-600 text-[8px] font-bold px-1 py-0.5 rounded-sm mb-1 text-white">NE BALL</div>
-                    <div className="w-2.5 h-2.5 bg-white rotate-45 shadow-[0_0_10px_#fff]" />
+                    <div className="w-2.5 h-2.5 bg-white rotate-45 shadow-[0_0_15px_#fff]" />
                   </motion.div>
                </div>
-               <div className="grid grid-cols-3 mt-6 pt-4 border-t border-white/5">
-                  <div><p className="text-[8px] text-slate-500 uppercase font-bold">Situation</p><p className="text-lg font-black italic text-white uppercase">{game.currentDrive.down}</p></div>
-                  <div className="text-center"><p className="text-[8px] text-slate-500 uppercase font-bold">Ball On</p><p className="text-lg font-black italic text-white">OPP 12</p></div>
-                  <div className="text-right"><p className="text-[8px] text-slate-500 uppercase font-bold">Drive Time</p><p className="text-lg font-black italic text-blue-500">{game.currentDrive.time}</p></div>
+               <div className="grid grid-cols-3 mt-6 pt-4 border-t border-white/5 text-center md:text-left">
+                  <div><p className="text-[8px] text-slate-500 uppercase font-bold tracking-widest">Situation</p><p className="text-lg font-black italic text-white uppercase">{game.currentDrive.down}</p></div>
+                  <div><p className="text-[8px] text-slate-500 uppercase font-bold tracking-widest">Ball On</p><p className="text-lg font-black italic text-white">OPP 12</p></div>
+                  <div className="text-right"><p className="text-[8px] text-slate-500 uppercase font-bold tracking-widest">Drive Clock</p><p className="text-lg font-black italic text-blue-500">{game.currentDrive.time}</p></div>
                </div>
             </section>
           </div>
 
-          {/* SIDEBAR (HISTORY & UNITS) */}
+          {/* SIDEBAR */}
           <div className="space-y-6">
             
-            {/* SCORING LOG */}
+            {/* SCORING HISTORY */}
             <section className="bg-[#0a0c14] border border-white/5 rounded-xl overflow-hidden shadow-xl">
                <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2">
                   <History size={14} className="text-blue-500" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Scoring_Log</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Scoring_History</span>
                </div>
                <div className="p-4 space-y-4">
                   <div className="border-l-2 border-blue-600 pl-3">
@@ -157,7 +180,7 @@ export default function PatriotsTelemetryPro() {
             <section className="bg-[#0a0c14] border border-white/5 rounded-xl overflow-hidden shadow-2xl">
                <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2">
                   <Target size={14} className="text-blue-500" />
-                  <span className="text-[10px] font-black uppercase text-slate-400">Unit_Selection</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Unit_Selector</span>
                </div>
                <div className="divide-y divide-white/5">
                   <div className="p-4 bg-blue-600/10 relative">
@@ -167,9 +190,9 @@ export default function PatriotsTelemetryPro() {
                        <Zap size={10} className="text-blue-500 animate-pulse" />
                     </div>
                     <p className="text-sm font-black text-white italic uppercase tracking-widest">{game.activeUnit.name}</p>
-                    <p className="text-[10px] font-bold text-blue-400 mt-1 font-mono tracking-tighter">{game.activeUnit.stats}</p>
+                    <p className="text-[10px] font-bold text-blue-400 mt-1 font-mono">{game.activeUnit.stats}</p>
                   </div>
-                  {["RB R. Stevenson", "WR J. Polk"].map((p, i) => (
+                  {["RB R. Stevenson", "WR J. Polk", "TE H. Henry"].map((p, i) => (
                     <div key={i} className="p-4 flex justify-between items-center hover:bg-white/5 cursor-pointer group transition-colors">
                        <span className="text-[10px] font-bold text-slate-600 group-hover:text-slate-400 uppercase tracking-widest">{p}</span>
                        <ChevronRight size={14} className="text-white/5 group-hover:text-blue-500" />
