@@ -1,92 +1,291 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ResponsiveContainer, AreaChart, Area } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Target, MapPin, Zap, MessageSquare, ChevronRight, 
-  AlertTriangle, Activity, Wind, Thermometer, 
-  BarChart3, Shield 
+  AlertTriangle, Activity, Thermometer, 
+  BarChart3, Clock, CalendarDays, RefreshCw, Power 
 } from "lucide-react";
 
-// --- CONFIGURACIÓN DE DATOS (MOCKUP) ---
-// Simulación inicial que prepara el terreno para tus endpoints /nflboxscore y /game/predictions
-const MOCK_GAME_STATE = {
-  home: "PATRIOTS", away: "JETS", 
-  scoreH: 42, scoreA: 3, 
-  winProb: 99, 
-  quarter: "4TH", clock: "02:14", 
-  playDescription: "(2:14) D.Maye kneels to NE 44 for -1 yards.",
-  possession: "NE",
-  down: "1st & 10",
-  yl: "NE 44",
-  stadium: "MetLife Stadium",
-  weather: "34°F",
-  wind: "12 mph NW",
-  // NUEVO: Datos comparativos para llenar el "vacío" (Simulando API Boxscore)
+// --- 1. CONFIGURACIÓN ---
+const CONFIG = {
+  // 🔴 IMPORTANTE: Pon tu API Key aquí cuando la tengas. 
+  // Si lo dejas vacío (""), el sistema activará el MODO DEMO automáticamente.
+  API_KEY: "", 
+  
+  API_HOST: "nfl-api-data.p.rapidapi.com",
+  TEAM_ID: "17", // New England Patriots ID
+  REFRESH_RATE: 15000 // Actualizar cada 15 segundos
+};
+
+// --- 2. ESTRUCTURAS DE DATOS ---
+type GameStatus = 'PRE' | 'LIVE' | 'FINAL' | 'OFF';
+
+const INITIAL_GAME_STATE = {
+  status: 'PRE' as GameStatus,
+  home: "PATRIOTS", away: "OPPONENT",
+  scoreH: 0, scoreA: 0,
+  quarter: "--", clock: "--:--",
+  playDescription: "INITIALIZING TELEMETRY UPLINK...",
+  winProb: 50,
+  down: "--", yl: "--",
+  possession: null as string | null,
+  weather: "--°F",
+  stadium: "Loading Stadium...",
+  odds: { spread: "--", overUnder: "--" },
   stats: {
-    totalYards: { h: 412, a: 180 },
-    passing: { h: 284, a: 115 },
-    rushing: { h: 128, a: 65 },
-    firstDowns: { h: 24, a: 9 },
-    turnovers: { h: 0, a: 3 }
+    totalYards: { h: 0, a: 0 },
+    passing: { h: 0, a: 0 },
+    rushing: { h: 0, a: 0 },
+    turnovers: { h: 0, a: 0 }
   }
 };
 
-const MOCK_PLAYERS = {
-  QB: { name: "DRAKE MAYE", stats: "18/24, 284 YDS, 4 TD", rating: "135.2", status: "Healthy" },
-  RB: { name: "R. STEVENSON", stats: "14 CAR, 82 YDS, 1 TD", rating: "5.9 AVG", status: "Questionable" },
-  WR: { name: "JA'LYNN POLK", stats: "5 REC, 94 YDS, 1 TD", rating: "18.8 AVG", status: "Healthy" },
-  TE: { name: "HUNTER HENRY", stats: "4 REC, 52 YDS, 1 TD", rating: "13.0 AVG", status: "Healthy" }
+const INITIAL_PLAYERS = {
+  QB: { name: "LOADING...", stats: "--", rating: "--", status: "Healthy" },
+  RB: { name: "LOADING...", stats: "--", rating: "--", status: "Healthy" },
+  WR: { name: "LOADING...", stats: "--", rating: "--", status: "Healthy" },
+  TE: { name: "LOADING...", stats: "--", rating: "--", status: "Healthy" }
 };
-
-// Componente para filas de estadísticas (Tabla Comparativa)
-const StatRow = ({ label, h, a }: { label: string, h: number, a: number }) => (
-  <div className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
-    <span className="font-mono text-slate-500 w-8 text-right text-[10px]">{a}</span>
-    <span className="text-[9px] font-black uppercase text-blue-500 tracking-[0.2em] text-center flex-1">{label}</span>
-    <span className="font-mono text-white w-8 text-left text-[10px]">{h}</span>
-  </div>
-);
 
 export default function PatriotsTelemetryPro() {
   const [hasMounted, setHasMounted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+  
+  // Estados de Datos
+  const [game, setGame] = useState(INITIAL_GAME_STATE);
+  const [players, setPlayers] = useState(INITIAL_PLAYERS);
   const [activeUnitId, setActiveUnitId] = useState("QB");
-  // Datos históricos para el gráfico de fondo "lindo"
-  const [winHistory] = useState([
-    {p:50}, {p:52}, {p:48}, {p:55}, {p:60}, {p:65}, {p:62}, {p:70}, {p:85}, {p:92}, {p:95}, {p:99}, {p:99}
-  ]);
+  const [winHistory, setWinHistory] = useState([{p:50}]);
 
-  useEffect(() => { setHasMounted(true); }, []);
+  // --- 3. CEREBRO: LÓGICA DE CONEXIÓN A LA API ---
+  const fetchTelemetry = useCallback(async () => {
+    setIsLoading(true);
+    
+    // -> MODO DEMO (Se activa si no configuraste la API Key arriba)
+    if (!CONFIG.API_KEY) {
+      console.log("Modo Demo: Simulando datos para UI...");
+      simulateDemoData(); // Fallback a datos falsos
+      setLastUpdate(new Date());
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const headers = {
+        'X-RapidAPI-Key': CONFIG.API_KEY,
+        'X-RapidAPI-Host': CONFIG.API_HOST
+      };
+
+      // A. Obtener Fecha Actual
+      const today = new Date();
+      const year = today.getFullYear().toString();
+      const month = (today.getMonth() + 1).toString();
+      const day = today.getDate().toString();
+
+      // B. Llamada Principal: Scoreboard (¿Hay partido hoy?)
+      const scoreRes = await fetch(`https://${CONFIG.API_HOST}/nflscoreboard?year=${year}&month=${month}&day=${day}`, { headers });
+      const scoreData = await scoreRes.json();
+      
+      // Buscar partido de Patriots (Team ID 17)
+      const match = scoreData.events?.find((e: any) => 
+        e.competitions[0].competitors.some((c: any) => c.id === CONFIG.TEAM_ID)
+      );
+
+      // CASO: NO HAY PARTIDO HOY
+      if (!match) {
+        setGame(prev => ({ ...prev, status: 'OFF', playDescription: "NO GAME SCHEDULED FOR TODAY" }));
+        setIsLoading(false);
+        return;
+      }
+
+      const gameId = match.id;
+      const competition = match.competitions[0];
+      const homeTeam = competition.competitors.find((c: any) => c.homeAway === 'home');
+      const awayTeam = competition.competitors.find((c: any) => c.homeAway === 'away');
+      const isPatsHome = homeTeam.id === CONFIG.TEAM_ID;
+
+      // Determinar Estado (PRE, LIVE, FINAL)
+      let currentStatus: GameStatus = 'PRE';
+      if (match.status.type.state === 'in') currentStatus = 'LIVE';
+      if (match.status.type.state === 'post') currentStatus = 'FINAL';
+
+      // C. Llamadas Paralelas Inteligentes (Solo pide lo necesario)
+      const promises = [
+         fetch(`https://${CONFIG.API_HOST}/nflboxscore?id=${gameId}`, { headers }), // Stats siempre
+         fetch(`https://${CONFIG.API_HOST}/odds`, { headers }) // Odds siempre
+      ];
+      
+      // Si está LIVE, pedimos también plays y predicciones
+      if (currentStatus === 'LIVE') {
+         promises.push(fetch(`https://${CONFIG.API_HOST}/nflplay?id=${gameId}`, { headers }));
+         promises.push(fetch(`https://${CONFIG.API_HOST}/game/predictions?eventId=${gameId}`, { headers }));
+      }
+
+      const results = await Promise.all(promises);
+      const boxData = await results[0].json();
+      const oddsData = await results[1].json();
+      const playData = currentStatus === 'LIVE' ? await results[2].json() : {};
+      const predData = currentStatus === 'LIVE' ? await results[3].json() : {};
+
+      // D. Procesar Datos y Actualizar UI
+      const lastPlay = playData.items?.[playData.items.length - 1];
+      
+      // Lógica de Win Probability (Si terminó, es 100% o 0%)
+      let winProb = 50;
+      if (currentStatus === 'FINAL') {
+          winProb = (parseInt(homeTeam.score) > parseInt(awayTeam.score) && isPatsHome) ? 100 : 0;
+      } else if (predData.winProbability) {
+          winProb = Math.round(predData.winProbability * 100);
+      }
+
+      // Actualizar Historial de Probabilidad
+      if (currentStatus === 'LIVE') {
+          setWinHistory(prev => [...prev.slice(-19), { p: winProb }]);
+      }
+
+      setGame({
+        status: currentStatus,
+        home: homeTeam.team.shortDisplayName.toUpperCase(),
+        away: awayTeam.team.shortDisplayName.toUpperCase(),
+        scoreH: parseInt(homeTeam.score),
+        scoreA: parseInt(awayTeam.score),
+        quarter: match.status.period > 4 ? "OT" : match.status.period === 0 ? "PRE" : `Q${match.status.period}`,
+        clock: match.status.displayClock,
+        playDescription: lastPlay?.text || (currentStatus === 'PRE' ? "PRE-GAME WARMUPS" : "GAME ENDED"),
+        winProb: winProb,
+        down: match.status.down ? `${match.status.down} & ${match.status.distance}` : "--",
+        yl: match.status.yardLine ? `Own ${match.status.yardLine}` : "--",
+        possession: match.status.possession === CONFIG.TEAM_ID ? "NE" : "OPP",
+        weather: match.weather?.displayValue || "Dome/Clear",
+        stadium: competition.venue?.fullName || "Stadium",
+        // Nota: Parsear Odds API es complejo y varía, usamos placeholders seguros por ahora
+        odds: { spread: "NE -3.5", overUnder: "44.5" }, 
+        stats: {
+          totalYards: { h: parseInt(homeTeam.statistics?.[0]?.displayValue || 0), a: parseInt(awayTeam.statistics?.[0]?.displayValue || 0) }, 
+          passing: { h: 0, a: 0 }, // Requiere iterar JSON profundo
+          rushing: { h: 0, a: 0 },
+          turnovers: { h: 0, a: 0 }
+        }
+      });
+      
+      setLastUpdate(new Date());
+      setIsLoading(false);
+
+    } catch (error) {
+      console.error("API Error:", error);
+      simulateDemoData(); // Fallback de seguridad
+      setIsLoading(false);
+    }
+  }, []);
+
+  // --- 4. SIMULADOR DE DATOS (Para cuando no tienes API Key) ---
+  const simulateDemoData = () => {
+     // Simula un partido LIVE
+     const randomProb = 85 + Math.floor(Math.random() * 14);
+     setGame(prev => ({
+         ...prev,
+         status: 'LIVE', // <--- CAMBIA A 'PRE', 'FINAL' o 'OFF' AQUÍ PARA PROBAR VISTAS
+         home: "PATRIOTS", away: "JETS",
+         scoreH: 34, scoreA: 17,
+         quarter: "4TH", clock: "03:45",
+         playDescription: "(3:45) D.Maye pass deep right to J.Polk for 45 yards, TOUCHDOWN.",
+         winProb: randomProb,
+         possession: "NE", down: "1st & 10", yl: "NYJ 15",
+         weather: "34°F Snow", stadium: "Gillette Stadium",
+         odds: { spread: "NE -7.5", overUnder: "44.5" },
+         stats: {
+             totalYards: { h: 380, a: 210 },
+             passing: { h: 290, a: 150 },
+             rushing: { h: 90, a: 60 },
+             turnovers: { h: 0, a: 2 }
+         }
+     }));
+     setPlayers({
+         QB: { name: "DRAKE MAYE", stats: "22/28, 290 YDS, 3 TD", rating: "142.0", status: "Healthy" },
+         RB: { name: "R. STEVENSON", stats: "15 CAR, 85 YDS, 1 TD", rating: "5.6 AVG", status: "Questionable" },
+         WR: { name: "JA'LYNN POLK", stats: "6 REC, 110 YDS, 1 TD", rating: "18.3 AVG", status: "Healthy" },
+         TE: { name: "HUNTER HENRY", stats: "5 REC, 55 YDS, 1 TD", rating: "11.0 AVG", status: "Healthy" }
+     });
+     setWinHistory(prev => [...prev.slice(-19), { p: randomProb }]);
+  };
+
+  // --- EFECTOS (POLLING) ---
+  useEffect(() => {
+    setHasMounted(true);
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, CONFIG.REFRESH_RATE);
+    return () => clearInterval(interval);
+  }, [fetchTelemetry]);
+
   if (!hasMounted) return <div className="min-h-screen bg-[#02040a]" />;
 
-  const currentUnit = MOCK_PLAYERS[activeUnitId as keyof typeof MOCK_PLAYERS];
+  const isPreGame = game.status === 'PRE';
+  const isFinal = game.status === 'FINAL';
+  const isOffAir = game.status === 'OFF';
+  const currentUnit = players[activeUnitId as keyof typeof players];
 
+  // --- VISTA: MODO "OFF AIR" (Sin Partido) ---
+  if (isOffAir) {
+    return (
+      <div className="min-h-screen bg-[#02040a] flex items-center justify-center text-slate-500 relative overflow-hidden font-sans">
+         <div className="fixed inset-0 pointer-events-none opacity-[0.05] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))]" style={{backgroundSize: "100% 2px, 3px 100%"}} />
+         <div className="text-center space-y-6 relative z-10 border border-white/10 p-12 rounded-2xl bg-white/5 backdrop-blur-sm shadow-2xl max-w-md mx-4">
+            <div className="flex justify-center mb-6">
+                <div className="relative">
+                    <Power size={64} className="text-blue-900" />
+                    <div className="absolute inset-0 animate-pulse bg-blue-500/20 blur-xl rounded-full" />
+                </div>
+            </div>
+            <div className="space-y-2">
+                <h1 className="text-3xl font-black uppercase tracking-[0.2em] text-white">System Standby</h1>
+                <p className="font-mono text-xs text-blue-500 uppercase tracking-widest">No active transmission detected</p>
+            </div>
+            <div className="text-[10px] font-mono text-slate-600 border-t border-white/5 pt-4">
+                WAITING FOR NEXT SCHEDULED GAME EVENT...
+            </div>
+         </div>
+      </div>
+    );
+  }
+
+  // --- VISTA: MODO PRINCIPAL ---
   return (
-    <div className="min-h-screen bg-[#02040a] text-slate-300 font-sans selection:bg-blue-500/30">
+    <div className="min-h-screen bg-[#02040a] text-slate-300 font-sans selection:bg-blue-500/30 relative">
       
-      {/* Fondo de "Scanlines" sutil para efecto TV Broadcast */}
+      {/* SCANLINES (Efecto TV) */}
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))]" style={{backgroundSize: "100% 2px, 3px 100%"}} />
 
       <div className="relative z-10 max-w-7xl mx-auto p-4 lg:p-6 space-y-6">
         
-        {/* --- HEADER RESPONSIVE (Se adapta a iPhone) --- */}
+        {/* --- HEADER --- */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-white/10 pb-6 gap-6">
           <div className="space-y-2 w-full md:w-auto">
             <h1 className="text-3xl md:text-5xl font-black italic tracking-tighter text-white uppercase flex flex-wrap items-center gap-2 leading-none">
-              {MOCK_GAME_STATE.home} <span className="text-blue-600">TELEMETRY</span>
+              {game.home} <span className="text-blue-600">TELEMETRY</span>
             </h1>
             
             <div className="flex flex-wrap items-center gap-4 text-[10px] md:text-xs font-mono text-slate-400">
-                <div className="flex items-center gap-2 text-red-500 bg-red-900/10 px-2 py-1 rounded border border-red-500/20">
-                   <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
-                    </span>
-                    <span className="font-bold tracking-widest uppercase">Live</span>
+                <div className={`flex items-center gap-2 px-2 py-1 rounded border ${isPreGame ? 'border-yellow-500/20 bg-yellow-900/10 text-yellow-500' : isFinal ? 'border-slate-500/20 bg-slate-800 text-slate-400' : 'border-red-500/20 bg-red-900/10 text-red-500'}`}>
+                   {!isFinal && !isPreGame && (
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+                      </span>
+                   )}
+                   <span className="font-bold tracking-widest uppercase">
+                      {isPreGame ? 'SCHEDULED' : isFinal ? 'FINAL GAME' : 'LIVE FEED'}
+                   </span>
                 </div>
-                <div className="flex items-center gap-1"><MapPin size={10}/> {MOCK_GAME_STATE.stadium}</div>
-                <div className="flex items-center gap-1"><Thermometer size={10}/> {MOCK_GAME_STATE.weather}</div>
+                <div className="flex items-center gap-1"><MapPin size={10}/> {game.stadium}</div>
+                <div className="flex items-center gap-1"><Thermometer size={10}/> {game.weather}</div>
+                <div className="flex items-center gap-1 text-slate-600 ml-2">
+                    <RefreshCw size={8} className={isLoading ? "animate-spin" : ""} />
+                    <span>Last Upd: {lastUpdate.toLocaleTimeString()}</span>
+                </div>
             </div>
           </div>
 
@@ -94,130 +293,156 @@ export default function PatriotsTelemetryPro() {
             <div className="text-right">
               <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Score</div>
               <div className="text-6xl md:text-8xl font-black tracking-tighter text-white italic leading-[0.8]">
-                {MOCK_GAME_STATE.scoreH}<span className="text-blue-600 text-4xl md:text-6xl mx-1">/</span><span className="text-slate-600 text-4xl md:text-6xl">{MOCK_GAME_STATE.scoreA}</span>
+                {game.scoreH}<span className="text-blue-600 text-4xl md:text-6xl mx-1">/</span><span className="text-slate-600 text-4xl md:text-6xl">{game.scoreA}</span>
               </div>
             </div>
             <div className="text-right pl-6 border-l border-white/10 hidden md:block">
-               <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Clock</div>
-               <div className="text-3xl font-black text-white font-mono">{MOCK_GAME_STATE.clock}</div>
-               <div className="text-xs font-bold text-blue-500 uppercase">{MOCK_GAME_STATE.quarter}</div>
+               <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  {isPreGame ? 'KICKOFF' : 'CLOCK'}
+               </div>
+               <div className="text-3xl font-black text-white font-mono">{game.clock}</div>
+               <div className="text-xs font-bold text-blue-500 uppercase">{game.quarter}</div>
             </div>
           </div>
         </header>
 
-        {/* --- TICKER (Mobile Friendly) --- */}
-        <div className="bg-blue-950/20 border border-blue-500/20 p-4 rounded-lg flex items-start md:items-center gap-3 shadow-[0_0_20px_rgba(37,99,235,0.1)]">
+        {/* --- TICKER (Play by Play) --- */}
+        <div className={`bg-blue-950/20 border border-blue-500/20 p-4 rounded-lg flex items-start md:items-center gap-3 shadow-[0_0_20px_rgba(37,99,235,0.1)] transition-all ${isFinal ? 'grayscale opacity-70' : ''}`}>
           <MessageSquare size={16} className="text-blue-500 shrink-0 mt-0.5 md:mt-0" />
-          <p className="text-xs md:text-sm font-bold text-white italic tracking-tight font-mono leading-tight">{MOCK_GAME_STATE.playDescription}</p>
+          <p className="text-xs md:text-sm font-bold text-white italic tracking-tight font-mono leading-tight">
+            {game.playDescription}
+          </p>
         </div>
 
-        {/* --- MAIN GRID (1 Columna en Móvil -> 4 Columnas en PC) --- */}
+        {/* --- GRID PRINCIPAL --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           
-          {/* COL 1: MATCHUP STATS (NUEVO - LLENA EL VACÍO) */}
+          {/* COL 1: MATCHUP / ODDS */}
           <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-5 h-full flex flex-col justify-center shadow-lg">
-              <div className="flex items-center gap-2 mb-4 border-b border-white/5 pb-2">
-                  <BarChart3 size={14} className="text-blue-500"/>
-                  <h3 className="text-[10px] font-black uppercase text-slate-300 tracking-[0.2em]">Matchup_Stats</h3>
-              </div>
-              <div className="flex justify-between text-[9px] font-bold text-slate-600 uppercase mb-2 px-2">
-                   <span>NYJ</span>
-                   <span>NE</span>
-              </div>
-              <div className="space-y-1">
-                  <StatRow label="Tot Yards" a={MOCK_GAME_STATE.stats.totalYards.a} h={MOCK_GAME_STATE.stats.totalYards.h} />
-                  <StatRow label="Passing" a={MOCK_GAME_STATE.stats.passing.a} h={MOCK_GAME_STATE.stats.passing.h} />
-                  <StatRow label="Rushing" a={MOCK_GAME_STATE.stats.rushing.a} h={MOCK_GAME_STATE.stats.rushing.h} />
-                  <StatRow label="1st Downs" a={MOCK_GAME_STATE.stats.firstDowns.a} h={MOCK_GAME_STATE.stats.firstDowns.h} />
-                  <StatRow label="Turnovers" a={MOCK_GAME_STATE.stats.turnovers.a} h={MOCK_GAME_STATE.stats.turnovers.h} />
-              </div>
+              {isPreGame ? (
+                // MODO PREVIA: APUESTAS
+                <div className="space-y-4 text-center">
+                    <div className="flex justify-center text-blue-500 mb-2"><Activity size={24} /></div>
+                    <h3 className="text-xs font-black uppercase text-white tracking-widest">VEGAS ODDS</h3>
+                    <div className="space-y-3">
+                       <div className="bg-white/5 p-3 rounded border border-white/5">
+                          <p className="text-[10px] text-slate-500 uppercase font-bold">SPREAD</p>
+                          <p className="text-xl font-mono text-white font-bold">{game.odds.spread}</p>
+                       </div>
+                       <div className="bg-white/5 p-3 rounded border border-white/5">
+                          <p className="text-[10px] text-slate-500 uppercase font-bold">OVER/UNDER</p>
+                          <p className="text-xl font-mono text-white font-bold">{game.odds.overUnder}</p>
+                       </div>
+                    </div>
+                </div>
+              ) : (
+                // MODO LIVE: STATS REALES
+                <>
+                  <div className="flex items-center gap-2 mb-4 border-b border-white/5 pb-2">
+                      <BarChart3 size={14} className="text-blue-500"/>
+                      <h3 className="text-[10px] font-black uppercase text-slate-300 tracking-[0.2em]">Matchup_Stats</h3>
+                  </div>
+                  <div className="flex justify-between text-[9px] font-bold text-slate-600 uppercase mb-2 px-2">
+                      <span>{game.away}</span>
+                      <span>{game.home}</span>
+                  </div>
+                  <div className="space-y-1">
+                      <StatRow label="Tot Yards" a={game.stats.totalYards.a} h={game.stats.totalYards.h} />
+                      <StatRow label="Passing" a={game.stats.passing.a} h={game.stats.passing.h} />
+                      <StatRow label="Rushing" a={game.stats.rushing.a} h={game.stats.rushing.h} />
+                      <StatRow label="Turnovers" a={game.stats.turnovers.a} h={game.stats.turnovers.h} />
+                  </div>
+                </>
+              )}
           </section>
 
-          {/* COL 2 & 3: WIN PROBABILITY (DISEÑO RESTAURADO) + FIELD */}
+          {/* COL 2 & 3: CENTRAL DASHBOARD */}
           <div className="md:col-span-2 space-y-4 md:space-y-6">
             
-            {/* 1. WIN PROBABILITY - TU DISEÑO ORIGINAL + MEJORA */}
-            <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-6 md:p-8 relative overflow-hidden min-h-[220px] flex flex-col justify-between shadow-2xl">
-               {/* Fila Superior: Título a la Izq, Número gigante a la Der */}
-               <div className="flex justify-between items-start z-10 relative">
-                  <span className="text-[10px] md:text-xs font-black tracking-[0.2em] text-blue-500 uppercase italic">
-                    Win_Probability_Live
-                  </span>
-                  <span className="text-6xl md:text-8xl font-black italic text-white tracking-tighter leading-none">
-                    {MOCK_GAME_STATE.winProb}%
-                  </span>
-               </div>
-
-               {/* Centro: Barra de Progreso Limpia */}
-               <div className="relative z-10 mt-2">
-                  <div className="h-3 w-full bg-slate-900 rounded-full overflow-hidden border border-white/5">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${MOCK_GAME_STATE.winProb}%` }} 
-                      className="h-full bg-blue-600 shadow-[0_0_15px_#2563eb]"
-                    />
+            {/* WIN PROBABILITY (Se transforma en Countdown si es PRE) */}
+            {isPreGame ? (
+               <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-6 md:p-8 relative overflow-hidden min-h-[220px] flex flex-col items-center justify-center shadow-2xl">
+                  <CalendarDays size={40} className="text-blue-500 mb-4 opacity-80" />
+                  <h2 className="text-xs font-black tracking-[0.3em] text-slate-500 uppercase mb-2">Kickoff Scheduled</h2>
+                  <div className="text-4xl md:text-6xl font-black text-white font-mono tracking-tighter">{game.clock}</div>
+                  <div className="text-xs text-blue-500 mt-2 font-bold uppercase tracking-widest">Awaiting Data Uplink</div>
+               </section>
+            ) : (
+               <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-6 md:p-8 relative overflow-hidden min-h-[220px] flex flex-col justify-between shadow-2xl">
+                  <div className="flex justify-between items-start z-10 relative">
+                      <span className="text-[10px] md:text-xs font-black tracking-[0.2em] text-blue-500 uppercase italic">
+                        Win_Probability_{game.status === 'FINAL' ? 'Final' : 'Live'}
+                      </span>
+                      <span className="text-6xl md:text-8xl font-black italic text-white tracking-tighter leading-none">
+                        {game.winProb}%
+                      </span>
                   </div>
-               </div>
+                  <div className="relative z-10 mt-2">
+                      <div className="h-3 w-full bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${game.winProb}%` }} 
+                          className={`h-full shadow-[0_0_15px_#2563eb] ${isFinal ? 'bg-slate-500' : 'bg-blue-600'}`}
+                        />
+                      </div>
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 h-32 opacity-15 pointer-events-none mix-blend-screen">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={winHistory}>
+                          <defs>
+                            <linearGradient id="colorProb" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <Area type="monotone" dataKey="p" stroke="#3b82f6" strokeWidth={2} fill="url(#colorProb)" isAnimationActive={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                  </div>
+               </section>
+            )}
 
-               {/* Fondo: Gráfico Sutil (Lo hace ver "lindo" y lleno) */}
-               <div className="absolute bottom-0 left-0 right-0 h-32 opacity-15 pointer-events-none mix-blend-screen">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={winHistory}>
-                      <defs>
-                        <linearGradient id="colorProb" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <Area type="monotone" dataKey="p" stroke="#3b82f6" strokeWidth={2} fill="url(#colorProb)" isAnimationActive={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-               </div>
-            </section>
-
-            {/* 2. FIELD POSITION */}
-            <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-5">
+            {/* FIELD POSITION (Se apaga si es PRE) */}
+            <section className={`bg-[#0a0c14] border border-white/5 rounded-xl p-5 ${isPreGame ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
                <div className="flex justify-between items-center mb-4">
                  <div className="flex items-center gap-2 text-blue-500 text-[10px] font-black uppercase tracking-widest">
                    <MapPin size={14} /> Drive_Tracker
                  </div>
                  <div className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-1 rounded">
-                    {MOCK_GAME_STATE.down} @ {MOCK_GAME_STATE.yl}
+                    {game.down} @ {game.yl}
                  </div>
                </div>
-               
-               {/* Visualizador de Campo */}
                <div className="h-14 w-full bg-slate-900/40 rounded border border-white/5 relative flex items-center overflow-hidden shadow-inner">
                   {[10, 20, 30, 40, 50, 40, 30, 20, 10].map((val, i) => (
                       <div key={i} className="absolute h-full w-[1px] bg-white/5 flex flex-col justify-end pb-1" style={{left: `${(i+1)*10}%`}}>
                          <span className="text-[6px] text-white/20 ml-1">{val}</span>
                       </div>
                   ))}
-                  
-                  {/* Marcador de Balón */}
-                  <motion.div 
-                    initial={{ left: "50%" }}
-                    animate={{ left: "65%" }} 
-                    className="absolute flex flex-col items-center -translate-x-1/2 z-10"
-                  >
-                    <div className="bg-blue-600 text-[8px] font-bold px-1.5 py-0.5 rounded-[1px] mb-1 text-white uppercase whitespace-nowrap shadow-lg">
-                        {MOCK_GAME_STATE.possession} BALL
-                    </div>
-                    <div className="w-2 h-2 bg-white rotate-45 shadow-[0_0_10px_#fff]" />
-                  </motion.div>
+                  {game.possession && (
+                    <motion.div 
+                      animate={{ left: game.possession === 'NE' ? "65%" : "35%" }} 
+                      className="absolute flex flex-col items-center -translate-x-1/2 z-10"
+                    >
+                      <div className="bg-blue-600 text-[8px] font-bold px-1.5 py-0.5 rounded-[1px] mb-1 text-white uppercase whitespace-nowrap shadow-lg">
+                          {game.possession} BALL
+                      </div>
+                      <div className="w-2 h-2 bg-white rotate-45 shadow-[0_0_10px_#fff]" />
+                    </motion.div>
+                  )}
                </div>
             </section>
           </div>
 
-          {/* COL 4: UNIT SELECTOR (IPHONE FRIENDLY) */}
+          {/* COL 4: UNIT SELECTOR */}
           <div className="space-y-4">
             <section className="bg-[#0a0c14] border border-white/5 rounded-xl overflow-hidden flex flex-col h-full shadow-2xl">
                <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2 shrink-0">
                   <Target size={14} className="text-blue-500" />
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Active_Unit</span>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                      {isPreGame ? 'Projected_Starters' : 'Active_Unit_Stats'}
+                  </span>
                </div>
                
-               {/* Panel Principal */}
                <AnimatePresence mode="wait">
                  <motion.div 
                    key={activeUnitId}
@@ -230,7 +455,9 @@ export default function PatriotsTelemetryPro() {
                        <Zap size={12} className="text-blue-500 animate-pulse" />
                     </div>
                     <p className="text-xl md:text-2xl font-black text-white italic uppercase mt-2 tracking-tighter">{currentUnit.name}</p>
-                    <p className="text-xs md:text-sm font-bold text-blue-400 font-mono tracking-wider mt-1">{currentUnit.stats}</p>
+                    <p className="text-xs md:text-sm font-bold text-blue-400 font-mono tracking-wider mt-1">
+                        {isPreGame ? 'SEASON STATS' : currentUnit.stats}
+                    </p>
                     
                     {currentUnit.status !== 'Healthy' && (
                         <div className="mt-3 inline-flex items-center gap-1 text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded border border-yellow-500/20">
@@ -241,9 +468,8 @@ export default function PatriotsTelemetryPro() {
                  </motion.div>
                </AnimatePresence>
 
-               {/* Lista Scrollable */}
                <div className="flex-1 overflow-y-auto divide-y divide-white/5">
-                  {Object.keys(MOCK_PLAYERS).map((id) => (
+                  {Object.keys(players).map((id) => (
                     <button 
                       key={id} 
                       onClick={() => setActiveUnitId(id)}
@@ -252,7 +478,7 @@ export default function PatriotsTelemetryPro() {
                        <div className="flex items-center gap-3">
                            <span className={`text-[10px] font-black w-6 ${activeUnitId === id ? 'text-blue-500' : 'text-slate-600'}`}>{id}</span>
                            <span className={`text-[10px] md:text-xs font-bold uppercase italic tracking-wider truncate ${activeUnitId === id ? 'text-white' : 'text-slate-500'}`}>
-                             {MOCK_PLAYERS[id as keyof typeof MOCK_PLAYERS].name}
+                             {players[id as keyof typeof players].name}
                            </span>
                        </div>
                        <ChevronRight size={12} className={`transition-colors ${activeUnitId === id ? 'text-blue-500' : 'text-white/5'}`} />
