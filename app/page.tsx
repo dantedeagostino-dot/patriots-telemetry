@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { Shield, TrendingUp, Zap, Radio, CloudRain, Activity, ChevronRight, Target, ArrowUpRight, ArrowDownRight, Users, Info, ListChecks, Stethoscope, Crosshair, Map } from 'lucide-react';
+import { Shield, TrendingUp, Zap, Activity, CloudRain, ChevronRight, Target, Users, Info, ListChecks, Stethoscope, Crosshair } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 
 const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), { 
@@ -17,13 +17,6 @@ const PATS_ROSTER = [
   { name: "Hunter Henry", id: "2976212", pos: "TE" },
   { name: "C. Gonzalez", id: "4426336", pos: "CB" }
 ];
-
-const MatrixLoading = () => (
-  <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono text-blue-500">
-    <Zap className="animate-bounce mb-4" size={48} />
-    <p className="tracking-[0.5em] animate-pulse font-black uppercase">Establishing_NE_Uplink</p>
-  </div>
-);
 
 const TacticalField = ({ yardLine, distance, possession }: any) => {
   const [side, lineStr] = yardLine && typeof yardLine === 'string' ? yardLine.split(' ') : ['NE', '50'];
@@ -70,11 +63,11 @@ export default function PatriotsDashboard() {
     };
 
     try {
-      // 1. CARGAR DATOS FIJOS
+      // 1. CARGAR DATOS FIJOS (URLs corregidas para evitar 404)
       const [bioRes, standRes, injRes] = await Promise.all([
-        fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/player/bio?id=${selectedPlayer.id}`, options),
-        fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/standings', options),
-        fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/injuries-team?id=22', options)
+        fetch(`https://nfl-api1.p.rapidapi.com/nfl/player/bio?id=${selectedPlayer.id}`, options),
+        fetch('https://nfl-api1.p.rapidapi.com/nfl/standings', options),
+        fetch('https://nfl-api1.p.rapidapi.com/nfl/injuries-team?id=22', options)
       ]);
       
       const bioData = await bioRes.json();
@@ -86,7 +79,7 @@ export default function PatriotsDashboard() {
       setInjuries(injData.injuries?.slice(0, 5) || []);
 
       // 2. DATOS DE PARTIDO
-      const scoreRes = await fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/scoreboard', options);
+      const scoreRes = await fetch('https://nfl-api1.p.rapidapi.com/nfl/scoreboard', options);
       const scoreData = await scoreRes.json();
       const patsEvent = scoreData.events?.find((e: any) => e.competitions[0].competitors.some((c: any) => c.team.abbreviation === 'NE'));
 
@@ -94,21 +87,24 @@ export default function PatriotsDashboard() {
         const gameId = patsEvent.id;
         const comp = patsEvent.competitions[0];
         const patsTeam = comp.competitors.find((c: any) => c.team.abbreviation === 'NE');
+        const oppTeam = comp.competitors.find((c: any) => c.team.abbreviation !== 'NE');
         const currentProb = patsTeam.winProbability || 50;
 
         const [boxRes, oddsRes] = await Promise.all([
-          fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/boxscore?id=${gameId}`, options),
-          fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/odds?id=${gameId}`, options)
+          fetch(`https://nfl-api1.p.rapidapi.com/nfl/boxscore?id=${gameId}`, options),
+          fetch(`https://nfl-api1.p.rapidapi.com/nfl/odds?id=${gameId}`, options)
         ]);
         const boxData = await boxRes.json();
         const oddsData = await oddsRes.json();
 
         setWinProbHistory((prev: any) => [...prev.slice(-30), { time: patsEvent.status.displayClock, prob: currentProb }]);
+        setScoreHistory((prev: any) => [...prev.slice(-15), { time: patsEvent.status.displayClock, pats: parseInt(patsTeam.score), opp: parseInt(oppTeam.score) }]);
+
         setGameData({
           isLive: patsEvent.status.type.state === 'in',
           status: patsEvent.status.type.detail,
-          score: { patriots: patsTeam.score, opponent: comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').score, oppName: comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').team.abbreviation },
-          timeouts: { pats: patsTeam.timeouts, opp: comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').timeouts },
+          score: { patriots: patsTeam.score, opponent: oppTeam.score, oppName: oppTeam.team.abbreviation },
+          timeouts: { pats: patsTeam.timeouts, opp: oppTeam.timeouts },
           odds: oddsData.items?.[0] || { details: "N/A" },
           situation: comp.situation || {},
           winProb: currentProb,
@@ -130,7 +126,7 @@ export default function PatriotsDashboard() {
     return () => clearInterval(interval);
   }, [fetchProData]);
 
-  if (loading) return <MatrixLoading />;
+  if (loading) return <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono text-blue-500 animate-pulse"><Zap size={48} className="mb-4" />SYNCING_TELEMETRY...</div>;
 
   return (
     <main className="min-h-screen bg-[#000d16] text-slate-100 p-4 lg:p-8 font-mono overflow-x-hidden">
@@ -143,13 +139,13 @@ export default function PatriotsDashboard() {
                <span className={`${gameData?.isLive ? 'text-green-500 animate-pulse' : 'text-slate-600'} flex items-center gap-1`}>
                  <Activity size={12}/> {gameData?.isLive ? 'LIVE_FEED' : 'STANDBY'}
                </span>
-               <span className="text-blue-400 uppercase tracking-widest"><CloudRain size={12} className="inline mr-1"/> {gameData?.weather?.displayValue || 'Atmosphere_Stable'}</span>
+               <span className="text-blue-400 uppercase tracking-widest"><CloudRain size={12} className="inline mr-1"/> {gameData?.weather?.displayValue || 'Stable'}</span>
                <span className="text-yellow-500 border border-yellow-900/50 px-2">Odds: {gameData?.odds?.details}</span>
             </div>
           </div>
         </div>
         <div className="bg-slate-900/50 border border-blue-500/20 p-3 px-6 text-center">
-          <p className="text-[9px] text-slate-500 uppercase italic">Status</p>
+          <p className="text-[9px] text-slate-500 uppercase italic">System_Clock</p>
           <p className="text-2xl font-black text-blue-400 tracking-widest uppercase">{gameData?.status || 'OFFLINE'}</p>
         </div>
       </header>
@@ -161,11 +157,8 @@ export default function PatriotsDashboard() {
                <div className="text-center text-white">
                  <p className="text-blue-500 text-xs font-black">NE</p>
                  <p className="text-7xl font-black leading-none">{gameData?.score.patriots}</p>
-                 <div className="flex gap-1 justify-center mt-2">
-                   {[...Array(3)].map((_, i) => <div key={i} className={`h-1 w-3 ${i < (gameData?.timeouts?.pats || 0) ? 'bg-yellow-400' : 'bg-slate-800'}`} />)}
-                 </div>
                </div>
-               <div className="text-slate-800 font-black text-xl">VS</div>
+               <div className="text-slate-800 font-black text-xl italic">VS</div>
                <div className="text-center opacity-60 text-white">
                  <p className="text-slate-500 text-xs font-black">{gameData?.score.oppName}</p>
                  <p className="text-7xl font-black leading-none">{gameData?.score.opponent}</p>
@@ -185,9 +178,7 @@ export default function PatriotsDashboard() {
           </section>
 
           <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm">
-            <h3 className="text-[10px] font-black text-blue-400 mb-4 uppercase tracking-widest flex items-center gap-2">
-              <Crosshair size={14}/> Target_Selection_Unit
-            </h3>
+            <h3 className="text-[10px] font-black text-blue-400 mb-4 uppercase tracking-widest flex items-center gap-2"><Crosshair size={14}/> Target_Selection</h3>
             <div className="space-y-1">
               {PATS_ROSTER.map((player) => (
                 <button key={player.id} onClick={() => setSelectedPlayer(player)} className={`w-full flex justify-between p-2 text-[10px] border-b border-slate-900 transition-all ${selectedPlayer.id === player.id ? 'bg-blue-900/40 border-l-4 border-l-blue-500 text-white font-black' : 'text-slate-500 hover:bg-slate-900'}`}>
@@ -217,17 +208,14 @@ export default function PatriotsDashboard() {
             <section className="bg-[#020814] border border-blue-900/20 p-6 rounded-sm shadow-2xl relative">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3 text-blue-500"><Target /><h2 className="text-lg font-black uppercase italic text-white">Tactical_Drive</h2></div>
-                <div className={`text-[8px] font-black px-2 py-1 border rounded-sm ${gameData?.isLive ? 'border-green-900 text-green-500' : 'border-slate-800 text-slate-600'}`}>
-                   {gameData?.isLive ? 'STREAM_ACTIVE' : 'FEED_STANDBY'}
-                </div>
               </div>
-              <div className="bg-black/40 p-4 italic text-[11px] border-l-4 border-blue-600 leading-relaxed min-h-[60px] text-slate-300">
+              <div className="bg-black/40 p-4 italic text-[11px] border-l-4 border-blue-600 min-h-[60px] text-slate-300">
                 {gameData?.situation?.lastPlay?.text || "Awaiting stadium telemetry feed..."}
               </div>
               <TacticalField yardLine={gameData?.situation?.yardLine} distance={gameData?.situation?.distance} possession={gameData?.possession} />
             </section>
 
-            <section className="bg-slate-950 border border-slate-800 p-6 rounded-sm shadow-2xl">
+            <section className="bg-slate-950 border border-slate-800 p-6 rounded-sm">
               <div className="flex items-center gap-3 mb-6 text-red-500"><Stethoscope size={18} /><h2 className="text-lg font-black uppercase italic text-white">Injury_Report</h2></div>
               <div className="space-y-2">
                 {injuries.length > 0 ? injuries.map((inj: any, i: number) => (
@@ -235,7 +223,7 @@ export default function PatriotsDashboard() {
                     <span className="text-slate-300 font-bold">{inj.athlete.displayName}</span>
                     <span className="text-red-500 font-black uppercase">{inj.status}</span>
                   </div>
-                )) : <p className="text-[10px] text-slate-600 italic">Scanning complete. No major injuries.</p>}
+                )) : <p className="text-[10px] text-slate-600 italic">No major injuries.</p>}
               </div>
             </section>
           </div>
@@ -267,11 +255,7 @@ export default function PatriotsDashboard() {
           </section>
 
           <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm h-[200px]">
-             <div className="flex items-center gap-2 mb-4 text-blue-500/50">
-                <Activity size={16} />
-                <span className="text-[10px] font-bold uppercase tracking-widest italic">Score_History_Telemetry</span>
-             </div>
-             <div className="h-[120px] w-full">
+             <div className="h-[150px] w-full">
                <ScoreTrendChart data={scoreHistory} />
              </div>
           </section>
