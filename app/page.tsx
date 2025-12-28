@@ -11,9 +11,7 @@ import {
 
 // --- 1. CONFIGURACIÓN ---
 const CONFIG = {
-  // ✅ AQUÍ ESTÁ EL CAMBIO:
-  // Ahora el código leerá tu variable de entorno automáticamente.
-  // Asegúrate de que en tu .env se llame EXACTAMENTE: NEXT_PUBLIC_RAPIDAPI_KEY
+  // 🔴 IMPORTANTE: La variable DEBE empezar con NEXT_PUBLIC_ para funcionar en el navegador
   API_KEY: process.env.NEXT_PUBLIC_RAPIDAPI_KEY || "", 
   
   API_HOST: "nfl-api-data.p.rapidapi.com",
@@ -79,7 +77,6 @@ export default function PatriotsTelemetryPro() {
 
   // --- 4. SIMULADOR DE RESPALDO (Por si falla la conexión) ---
   const simulateSmartData = useCallback(() => {
-     // Datos de ejemplo para que la UI no se rompa si no lee la Key
      setGame({
          status: 'FINAL',
          id: "game-sim",
@@ -108,7 +105,6 @@ export default function PatriotsTelemetryPro() {
 
      setWinHistory([{p:50}, {p:45}, {p:40}, {p:60}, {p:55}, {p:70}, {p:80}, {p:90}, {p:95}, {p:100}]);
      
-     // Calendario Simulado
      setSchedule([
          { id: 1, week: 18, opponent: "vs DOLPHINS", date: "Jan 05 • 1:00 PM", venue: "Gillette Stadium", ticket: "Home" },
          { id: 2, week: "WC", opponent: "@ CHIEFS", date: "TBD", venue: "Arrowhead Stadium", ticket: "Away" }
@@ -119,54 +115,57 @@ export default function PatriotsTelemetryPro() {
   const fetchTelemetry = useCallback(async () => {
     setIsLoading(true);
 
-    // Si no encuentra la key, usa simulación y avisa en consola
+    // DEBUG: Revisa la consola del navegador (F12) para ver este mensaje
     if (!CONFIG.API_KEY) {
-      console.warn("⚠️ No API Key detected. Using simulation. Check your .env for NEXT_PUBLIC_RAPIDAPI_KEY");
+      console.warn("⚠️ NO API KEY DETECTADA. Usando simulación.");
       simulateSmartData();
       setIsLoading(false);
-      setLastUpdate(new Date());
       return;
+    } else {
+        console.log("✅ API Key cargada correctamente. Conectando...");
     }
 
     try {
       const headers = { 'X-RapidAPI-Key': CONFIG.API_KEY, 'X-RapidAPI-Host': CONFIG.API_HOST };
-      const today = new Date();
-      // Si estamos en Enero/Febrero, pedimos la temporada del año anterior (NFL Season logic)
-      const seasonYear = today.getMonth() < 2 ? today.getFullYear() - 1 : today.getFullYear();
-
-      // A. OBTENER CALENDARIO DEL EQUIPO
-      const scheduleRes = await fetch(`https://${CONFIG.API_HOST}/nfl-schedule-team?teamId=${CONFIG.TEAM_ID}&season=${seasonYear}`, { headers });
-      const scheduleData = await scheduleRes.json();
       
+      // ✅ FIX: Forzamos la temporada 2024. La API fallaba al pedir 2025 (como se veía en tu error).
+      const seasonYear = "2024";
+
+      // A. OBTENER CALENDARIO
+      const scheduleRes = await fetch(`https://${CONFIG.API_HOST}/nfl-schedule-team?teamId=${CONFIG.TEAM_ID}&season=${seasonYear}`, { headers });
+      
+      // Si la API da error (403/500), lanzamos excepción para usar simulador
+      if (!scheduleRes.ok) throw new Error(`API Error: ${scheduleRes.status}`);
+
+      const scheduleData = await scheduleRes.json();
       const allGames = scheduleData.events || []; 
       
-      // 1. ¿Hay partido EN VIVO? (Status 'in')
+      // 1. ¿Hay partido EN VIVO?
       const liveGame = allGames.find((g: any) => g.status?.type?.state === 'in');
       
       let targetGameId = "";
       let mode: GameStatus = 'FINAL';
 
       if (liveGame) {
-          // ¡HAY PARTIDO! -> Forzar Modo Live y Pestaña Telemetría
           targetGameId = liveGame.id;
           mode = 'LIVE';
           setActiveTab('TELEMETRY'); 
       } else {
-          // NO HAY PARTIDO -> Buscar el último completado (Status 'post')
+          // NO HAY PARTIDO -> Buscar el último completado
           const completedGames = allGames
             .filter((g: any) => g.status?.type?.state === 'post')
             .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
           
           if (completedGames.length > 0) {
-             targetGameId = completedGames[0].id; // El último partido jugado
+             targetGameId = completedGames[0].id; 
              mode = 'FINAL';
           }
       }
 
-      // 2. Procesar Schedule (Para la pestaña Schedule - Partidos futuros 'pre')
+      // 2. Procesar Schedule Futuro
       const futureGames = allGames
           .filter((g: any) => g.status?.type?.state === 'pre')
-          .slice(0, 6) // Próximos 6 partidos
+          .slice(0, 6)
           .map((g: any) => ({
              id: g.id,
              week: g.week?.text || "NEXT",
@@ -177,25 +176,23 @@ export default function PatriotsTelemetryPro() {
           }));
       setSchedule(futureGames);
 
-      // B. OBTENER DETALLES DEL PARTIDO SELECCIONADO (Live o Final)
+      // B. OBTENER DETALLES DEL PARTIDO SELECCIONADO
       if (targetGameId) {
           const [boxRes, playRes] = await Promise.all([
              fetch(`https://${CONFIG.API_HOST}/nflboxscore?id=${targetGameId}`, { headers }),
              fetch(`https://${CONFIG.API_HOST}/nflplay?id=${targetGameId}`, { headers })
           ]);
           
+          if (!boxRes.ok || !playRes.ok) throw new Error("Error fetching game details");
+
           const boxData = await boxRes.json();
           const playData = await playRes.json();
           
-          // Parseo de datos
           const compet = boxData.gamepackageJSON?.header?.competitions?.[0] || {};
           const homeTeam = compet.competitors?.find((c:any) => c.homeAway === 'home');
           const awayTeam = compet.competitors?.find((c:any) => c.homeAway === 'away');
-          
-          // Verificar localía
           const isPatsHome = homeTeam.id === CONFIG.TEAM_ID;
           
-          // Calcular Win/Loss para gráfico (100% o 0% si terminó)
           let winProb = 50;
           if (mode === 'FINAL') {
               const homeScore = parseInt(homeTeam.score);
@@ -231,7 +228,7 @@ export default function PatriotsTelemetryPro() {
       setIsLoading(false);
 
     } catch (e) {
-      console.error("Error fetching live data:", e);
+      console.error("Fallo en API (Usando Simulador):", e);
       simulateSmartData();
       setIsLoading(false);
     }
@@ -355,7 +352,7 @@ export default function PatriotsTelemetryPro() {
                       </div>
                   </section>
 
-                  {/* Probabilidad / Resultado */}
+                  {/* Probabilidad / Resultado - ARREGLO DE ALTURA AQUÍ */}
                   <section className="md:col-span-2 bg-[#0a0c14] border border-white/5 rounded-xl p-6 md:p-8 relative overflow-hidden min-h-[220px] flex flex-col justify-between shadow-2xl">
                       <div className="flex justify-between items-start z-10 relative">
                           <span className="text-[10px] md:text-xs font-black tracking-[0.2em] text-blue-500 uppercase italic">
@@ -385,18 +382,21 @@ export default function PatriotsTelemetryPro() {
                             />
                           </div>
                       </div>
-                      <div className="absolute bottom-0 left-0 right-0 h-32 opacity-15 pointer-events-none mix-blend-screen">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={winHistory}>
-                              <defs>
-                                <linearGradient id="colorProb" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                                </linearGradient>
-                              </defs>
-                              <Area type="monotone" dataKey="p" stroke="#3b82f6" strokeWidth={2} fill="url(#colorProb)" isAnimationActive={false} />
-                            </AreaChart>
-                          </ResponsiveContainer>
+                      <div className="absolute bottom-0 left-0 right-0 h-32 opacity-15 pointer-events-none mix-blend-screen w-full">
+                          {/* Wrapper con altura explícita para Recharts */}
+                          <div style={{ width: '100%', height: '100%' }}>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={winHistory}>
+                                  <defs>
+                                    <linearGradient id="colorProb" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                    </linearGradient>
+                                  </defs>
+                                  <Area type="monotone" dataKey="p" stroke="#3b82f6" strokeWidth={2} fill="url(#colorProb)" isAnimationActive={false} />
+                                </AreaChart>
+                              </ResponsiveContainer>
+                          </div>
                       </div>
                   </section>
 
@@ -441,7 +441,6 @@ export default function PatriotsTelemetryPro() {
             </motion.div>
           )}
 
-          {/* VISTA 2: SCHEDULE (Próximos Partidos) */}
           {activeTab === 'SCHEDULE' && (
             <motion.div 
               key="schedule"
