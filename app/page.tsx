@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Target, MapPin, Zap, MessageSquare, ChevronRight, 
   AlertTriangle, Activity, Thermometer, 
-  BarChart3, Clock, CalendarDays, RefreshCw, Power 
+  BarChart3, CalendarDays, RefreshCw, Power 
 } from "lucide-react";
 
 // --- 1. CONFIGURACIÓN ---
@@ -20,7 +20,16 @@ const CONFIG = {
   REFRESH_RATE: 15000 // Actualizar cada 15 segundos
 };
 
-// --- 2. ESTRUCTURAS DE DATOS ---
+// --- 2. COMPONENTES AUXILIARES (¡Aquí estaba el error!) ---
+const StatRow = ({ label, h, a }: { label: string, h: number | string, a: number | string }) => (
+  <div className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
+    <span className="font-mono text-slate-500 w-8 text-right text-[10px]">{a}</span>
+    <span className="text-[9px] font-black uppercase text-blue-500 tracking-[0.2em] text-center flex-1">{label}</span>
+    <span className="font-mono text-white w-8 text-left text-[10px]">{h}</span>
+  </div>
+);
+
+// --- 3. ESTRUCTURAS DE DATOS ---
 type GameStatus = 'PRE' | 'LIVE' | 'FINAL' | 'OFF';
 
 const INITIAL_GAME_STATE = {
@@ -61,134 +70,13 @@ export default function PatriotsTelemetryPro() {
   const [activeUnitId, setActiveUnitId] = useState("QB");
   const [winHistory, setWinHistory] = useState([{p:50}]);
 
-  // --- 3. CEREBRO: LÓGICA DE CONEXIÓN A LA API ---
-  const fetchTelemetry = useCallback(async () => {
-    setIsLoading(true);
-    
-    // -> MODO DEMO (Se activa si no configuraste la API Key arriba)
-    if (!CONFIG.API_KEY) {
-      console.log("Modo Demo: Simulando datos para UI...");
-      simulateDemoData(); // Fallback a datos falsos
-      setLastUpdate(new Date());
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const headers = {
-        'X-RapidAPI-Key': CONFIG.API_KEY,
-        'X-RapidAPI-Host': CONFIG.API_HOST
-      };
-
-      // A. Obtener Fecha Actual
-      const today = new Date();
-      const year = today.getFullYear().toString();
-      const month = (today.getMonth() + 1).toString();
-      const day = today.getDate().toString();
-
-      // B. Llamada Principal: Scoreboard (¿Hay partido hoy?)
-      const scoreRes = await fetch(`https://${CONFIG.API_HOST}/nflscoreboard?year=${year}&month=${month}&day=${day}`, { headers });
-      const scoreData = await scoreRes.json();
-      
-      // Buscar partido de Patriots (Team ID 17)
-      const match = scoreData.events?.find((e: any) => 
-        e.competitions[0].competitors.some((c: any) => c.id === CONFIG.TEAM_ID)
-      );
-
-      // CASO: NO HAY PARTIDO HOY
-      if (!match) {
-        setGame(prev => ({ ...prev, status: 'OFF', playDescription: "NO GAME SCHEDULED FOR TODAY" }));
-        setIsLoading(false);
-        return;
-      }
-
-      const gameId = match.id;
-      const competition = match.competitions[0];
-      const homeTeam = competition.competitors.find((c: any) => c.homeAway === 'home');
-      const awayTeam = competition.competitors.find((c: any) => c.homeAway === 'away');
-      const isPatsHome = homeTeam.id === CONFIG.TEAM_ID;
-
-      // Determinar Estado (PRE, LIVE, FINAL)
-      let currentStatus: GameStatus = 'PRE';
-      if (match.status.type.state === 'in') currentStatus = 'LIVE';
-      if (match.status.type.state === 'post') currentStatus = 'FINAL';
-
-      // C. Llamadas Paralelas Inteligentes (Solo pide lo necesario)
-      const promises = [
-         fetch(`https://${CONFIG.API_HOST}/nflboxscore?id=${gameId}`, { headers }), // Stats siempre
-         fetch(`https://${CONFIG.API_HOST}/odds`, { headers }) // Odds siempre
-      ];
-      
-      // Si está LIVE, pedimos también plays y predicciones
-      if (currentStatus === 'LIVE') {
-         promises.push(fetch(`https://${CONFIG.API_HOST}/nflplay?id=${gameId}`, { headers }));
-         promises.push(fetch(`https://${CONFIG.API_HOST}/game/predictions?eventId=${gameId}`, { headers }));
-      }
-
-      const results = await Promise.all(promises);
-      const boxData = await results[0].json();
-      const oddsData = await results[1].json();
-      const playData = currentStatus === 'LIVE' ? await results[2].json() : {};
-      const predData = currentStatus === 'LIVE' ? await results[3].json() : {};
-
-      // D. Procesar Datos y Actualizar UI
-      const lastPlay = playData.items?.[playData.items.length - 1];
-      
-      // Lógica de Win Probability (Si terminó, es 100% o 0%)
-      let winProb = 50;
-      if (currentStatus === 'FINAL') {
-          winProb = (parseInt(homeTeam.score) > parseInt(awayTeam.score) && isPatsHome) ? 100 : 0;
-      } else if (predData.winProbability) {
-          winProb = Math.round(predData.winProbability * 100);
-      }
-
-      // Actualizar Historial de Probabilidad
-      if (currentStatus === 'LIVE') {
-          setWinHistory(prev => [...prev.slice(-19), { p: winProb }]);
-      }
-
-      setGame({
-        status: currentStatus,
-        home: homeTeam.team.shortDisplayName.toUpperCase(),
-        away: awayTeam.team.shortDisplayName.toUpperCase(),
-        scoreH: parseInt(homeTeam.score),
-        scoreA: parseInt(awayTeam.score),
-        quarter: match.status.period > 4 ? "OT" : match.status.period === 0 ? "PRE" : `Q${match.status.period}`,
-        clock: match.status.displayClock,
-        playDescription: lastPlay?.text || (currentStatus === 'PRE' ? "PRE-GAME WARMUPS" : "GAME ENDED"),
-        winProb: winProb,
-        down: match.status.down ? `${match.status.down} & ${match.status.distance}` : "--",
-        yl: match.status.yardLine ? `Own ${match.status.yardLine}` : "--",
-        possession: match.status.possession === CONFIG.TEAM_ID ? "NE" : "OPP",
-        weather: match.weather?.displayValue || "Dome/Clear",
-        stadium: competition.venue?.fullName || "Stadium",
-        // Nota: Parsear Odds API es complejo y varía, usamos placeholders seguros por ahora
-        odds: { spread: "NE -3.5", overUnder: "44.5" }, 
-        stats: {
-          totalYards: { h: parseInt(homeTeam.statistics?.[0]?.displayValue || 0), a: parseInt(awayTeam.statistics?.[0]?.displayValue || 0) }, 
-          passing: { h: 0, a: 0 }, // Requiere iterar JSON profundo
-          rushing: { h: 0, a: 0 },
-          turnovers: { h: 0, a: 0 }
-        }
-      });
-      
-      setLastUpdate(new Date());
-      setIsLoading(false);
-
-    } catch (error) {
-      console.error("API Error:", error);
-      simulateDemoData(); // Fallback de seguridad
-      setIsLoading(false);
-    }
-  }, []);
-
-  // --- 4. SIMULADOR DE DATOS (Para cuando no tienes API Key) ---
-  const simulateDemoData = () => {
-     // Simula un partido LIVE
+  // --- 4. SIMULADOR DE DATOS (Modo Demo) ---
+  // Definimos esto antes para que fetchTelemetry pueda usarlo sin errores
+  const simulateDemoData = useCallback(() => {
      const randomProb = 85 + Math.floor(Math.random() * 14);
      setGame(prev => ({
          ...prev,
-         status: 'LIVE', // <--- CAMBIA A 'PRE', 'FINAL' o 'OFF' AQUÍ PARA PROBAR VISTAS
+         status: 'LIVE', 
          home: "PATRIOTS", away: "JETS",
          scoreH: 34, scoreA: 17,
          quarter: "4TH", clock: "03:45",
@@ -211,9 +99,123 @@ export default function PatriotsTelemetryPro() {
          TE: { name: "HUNTER HENRY", stats: "5 REC, 55 YDS, 1 TD", rating: "11.0 AVG", status: "Healthy" }
      });
      setWinHistory(prev => [...prev.slice(-19), { p: randomProb }]);
-  };
+  }, []);
 
-  // --- EFECTOS (POLLING) ---
+  // --- 5. CEREBRO: LÓGICA DE CONEXIÓN A LA API ---
+  const fetchTelemetry = useCallback(async () => {
+    setIsLoading(true);
+    
+    // -> MODO DEMO: Se activa si no hay API Key
+    if (!CONFIG.API_KEY) {
+      console.log("Modo Demo: Simulando datos para UI...");
+      simulateDemoData(); 
+      setLastUpdate(new Date());
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const headers = {
+        'X-RapidAPI-Key': CONFIG.API_KEY,
+        'X-RapidAPI-Host': CONFIG.API_HOST
+      };
+
+      const today = new Date();
+      const year = today.getFullYear().toString();
+      const month = (today.getMonth() + 1).toString();
+      const day = today.getDate().toString();
+
+      // Verificar Scoreboard
+      const scoreRes = await fetch(`https://${CONFIG.API_HOST}/nflscoreboard?year=${year}&month=${month}&day=${day}`, { headers });
+      const scoreData = await scoreRes.json();
+      
+      const match = scoreData.events?.find((e: any) => 
+        e.competitions[0].competitors.some((c: any) => c.id === CONFIG.TEAM_ID)
+      );
+
+      // CASO: NO HAY PARTIDO
+      if (!match) {
+        setGame(prev => ({ ...prev, status: 'OFF', playDescription: "NO GAME SCHEDULED FOR TODAY" }));
+        setIsLoading(false);
+        return;
+      }
+
+      const gameId = match.id;
+      const competition = match.competitions[0];
+      const homeTeam = competition.competitors.find((c: any) => c.homeAway === 'home');
+      const awayTeam = competition.competitors.find((c: any) => c.homeAway === 'away');
+      const isPatsHome = homeTeam.id === CONFIG.TEAM_ID;
+
+      // Determinar Estado
+      let currentStatus: GameStatus = 'PRE';
+      if (match.status.type.state === 'in') currentStatus = 'LIVE';
+      if (match.status.type.state === 'post') currentStatus = 'FINAL';
+
+      // Llamadas a la API
+      const promises = [
+         fetch(`https://${CONFIG.API_HOST}/nflboxscore?id=${gameId}`, { headers }),
+         fetch(`https://${CONFIG.API_HOST}/odds`, { headers })
+      ];
+      
+      if (currentStatus === 'LIVE') {
+         promises.push(fetch(`https://${CONFIG.API_HOST}/nflplay?id=${gameId}`, { headers }));
+         promises.push(fetch(`https://${CONFIG.API_HOST}/game/predictions?eventId=${gameId}`, { headers }));
+      }
+
+      const results = await Promise.all(promises);
+      const boxData = await results[0].json(); // Parsear boxData para players en el futuro
+      const oddsData = await results[1].json();
+      const playData = currentStatus === 'LIVE' ? await results[2].json() : {};
+      const predData = currentStatus === 'LIVE' ? await results[3].json() : {};
+
+      const lastPlay = playData.items?.[playData.items.length - 1];
+      
+      let winProb = 50;
+      if (currentStatus === 'FINAL') {
+          winProb = (parseInt(homeTeam.score) > parseInt(awayTeam.score) && isPatsHome) ? 100 : 0;
+      } else if (predData.winProbability) {
+          winProb = Math.round(predData.winProbability * 100);
+      }
+
+      if (currentStatus === 'LIVE') {
+          setWinHistory(prev => [...prev.slice(-19), { p: winProb }]);
+      }
+
+      setGame({
+        status: currentStatus,
+        home: homeTeam.team.shortDisplayName.toUpperCase(),
+        away: awayTeam.team.shortDisplayName.toUpperCase(),
+        scoreH: parseInt(homeTeam.score),
+        scoreA: parseInt(awayTeam.score),
+        quarter: match.status.period > 4 ? "OT" : match.status.period === 0 ? "PRE" : `Q${match.status.period}`,
+        clock: match.status.displayClock,
+        playDescription: lastPlay?.text || (currentStatus === 'PRE' ? "PRE-GAME WARMUPS" : "GAME ENDED"),
+        winProb: winProb,
+        down: match.status.down ? `${match.status.down} & ${match.status.distance}` : "--",
+        yl: match.status.yardLine ? `Own ${match.status.yardLine}` : "--",
+        possession: match.status.possession === CONFIG.TEAM_ID ? "NE" : "OPP",
+        weather: match.weather?.displayValue || "Dome/Clear",
+        stadium: competition.venue?.fullName || "Stadium",
+        odds: { spread: "NE -3.5", overUnder: "44.5" }, 
+        stats: {
+          totalYards: { h: parseInt(homeTeam.statistics?.[0]?.displayValue || 0), a: parseInt(awayTeam.statistics?.[0]?.displayValue || 0) }, 
+          passing: { h: 0, a: 0 }, 
+          rushing: { h: 0, a: 0 },
+          turnovers: { h: 0, a: 0 }
+        }
+      });
+      
+      setLastUpdate(new Date());
+      setIsLoading(false);
+
+    } catch (error) {
+      console.error("API Error:", error);
+      simulateDemoData(); 
+      setIsLoading(false);
+    }
+  }, [simulateDemoData]);
+
+  // --- EFECTOS ---
   useEffect(() => {
     setHasMounted(true);
     fetchTelemetry();
@@ -228,7 +230,7 @@ export default function PatriotsTelemetryPro() {
   const isOffAir = game.status === 'OFF';
   const currentUnit = players[activeUnitId as keyof typeof players];
 
-  // --- VISTA: MODO "OFF AIR" (Sin Partido) ---
+  // --- VISTA: MODO "OFF AIR" ---
   if (isOffAir) {
     return (
       <div className="min-h-screen bg-[#02040a] flex items-center justify-center text-slate-500 relative overflow-hidden font-sans">
@@ -256,7 +258,7 @@ export default function PatriotsTelemetryPro() {
   return (
     <div className="min-h-screen bg-[#02040a] text-slate-300 font-sans selection:bg-blue-500/30 relative">
       
-      {/* SCANLINES (Efecto TV) */}
+      {/* SCANLINES */}
       <div className="fixed inset-0 pointer-events-none z-0 opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))]" style={{backgroundSize: "100% 2px, 3px 100%"}} />
 
       <div className="relative z-10 max-w-7xl mx-auto p-4 lg:p-6 space-y-6">
@@ -306,7 +308,7 @@ export default function PatriotsTelemetryPro() {
           </div>
         </header>
 
-        {/* --- TICKER (Play by Play) --- */}
+        {/* --- TICKER --- */}
         <div className={`bg-blue-950/20 border border-blue-500/20 p-4 rounded-lg flex items-start md:items-center gap-3 shadow-[0_0_20px_rgba(37,99,235,0.1)] transition-all ${isFinal ? 'grayscale opacity-70' : ''}`}>
           <MessageSquare size={16} className="text-blue-500 shrink-0 mt-0.5 md:mt-0" />
           <p className="text-xs md:text-sm font-bold text-white italic tracking-tight font-mono leading-tight">
@@ -314,7 +316,7 @@ export default function PatriotsTelemetryPro() {
           </p>
         </div>
 
-        {/* --- GRID PRINCIPAL --- */}
+        {/* --- GRID --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           
           {/* COL 1: MATCHUP / ODDS */}
@@ -359,7 +361,7 @@ export default function PatriotsTelemetryPro() {
           {/* COL 2 & 3: CENTRAL DASHBOARD */}
           <div className="md:col-span-2 space-y-4 md:space-y-6">
             
-            {/* WIN PROBABILITY (Se transforma en Countdown si es PRE) */}
+            {/* WIN PROBABILITY */}
             {isPreGame ? (
                <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-6 md:p-8 relative overflow-hidden min-h-[220px] flex flex-col items-center justify-center shadow-2xl">
                   <CalendarDays size={40} className="text-blue-500 mb-4 opacity-80" />
@@ -402,7 +404,7 @@ export default function PatriotsTelemetryPro() {
                </section>
             )}
 
-            {/* FIELD POSITION (Se apaga si es PRE) */}
+            {/* FIELD POSITION */}
             <section className={`bg-[#0a0c14] border border-white/5 rounded-xl p-5 ${isPreGame ? 'opacity-30 grayscale pointer-events-none' : ''}`}>
                <div className="flex justify-between items-center mb-4">
                  <div className="flex items-center gap-2 text-blue-500 text-[10px] font-black uppercase tracking-widest">
