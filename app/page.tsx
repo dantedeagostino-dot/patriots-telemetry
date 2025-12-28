@@ -19,7 +19,7 @@ const PATS_ROSTER = [
   { name: "C. Gonzalez", id: "4426336", pos: "CB" }
 ];
 
-// COMPONENTE: EFECTO MATRIX ORIGINAL RECUPERADO
+// COMPONENTE: EFECTO MATRIX
 const MatrixLoading = () => (
   <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono overflow-hidden relative text-blue-500">
     <div className="absolute inset-0 opacity-10 pointer-events-none text-green-500 text-[10px] leading-none overflow-hidden break-all">
@@ -33,7 +33,7 @@ const MatrixLoading = () => (
   </div>
 );
 
-// COMPONENTE: CAMPO TÁCTICO ORIGINAL RECUPERADO
+// COMPONENTE: CAMPO TÁCTICO
 const TacticalField = ({ yardLine, distance, possession }: any) => {
   const [side, lineStr] = yardLine && typeof yardLine === 'string' ? yardLine.split(' ') : ['NE', '50'];
   const line = parseInt(lineStr) || 50;
@@ -79,11 +79,11 @@ export default function PatriotsDashboard() {
     };
 
     try {
-      // 1. BIO Y DATOS FIJOS
+      // 1. BIO Y DATOS FIJOS (URLs corregidas sin /v2/)
       const [bioRes, standRes, injRes] = await Promise.all([
-        fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/player/bio?id=${selectedPlayer.id}`, options),
-        fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/standings', options),
-        fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/injuries-team?id=22', options)
+        fetch(`https://nfl-api1.p.rapidapi.com/nfl/player/bio?id=${selectedPlayer.id}`, options),
+        fetch('https://nfl-api1.p.rapidapi.com/nfl/standings', options),
+        fetch('https://nfl-api1.p.rapidapi.com/nfl/injuries-team?id=22', options)
       ]);
       
       const bioData = await bioRes.json();
@@ -94,8 +94,8 @@ export default function PatriotsDashboard() {
       setStandings(standData.children?.[0]?.children?.[0]?.standings?.entries || []);
       setInjuries(injData.injuries?.slice(0, 5) || []);
 
-      // 2. DATOS DE PARTIDO
-      const scoreRes = await fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/scoreboard', options);
+      // 2. DATOS DE PARTIDO (URL corregida sin /v2/)
+      const scoreRes = await fetch('https://nfl-api1.p.rapidapi.com/nfl/scoreboard', options);
       const scoreData = await scoreRes.json();
       const patsEvent = scoreData.events?.find((e: any) => e.competitions[0].competitors.some((c: any) => c.team.abbreviation === 'NE'));
 
@@ -105,9 +105,10 @@ export default function PatriotsDashboard() {
         const patsTeam = comp.competitors.find((c: any) => c.team.abbreviation === 'NE');
         const currentProb = patsTeam.winProbability || 50;
 
+        // BOXSCORE Y ODDS (URLs corregidas sin /v2/)
         const [boxRes, oddsRes] = await Promise.all([
-          fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/boxscore?id=${gameId}`, options),
-          fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/odds?id=${gameId}`, options)
+          fetch(`https://nfl-api1.p.rapidapi.com/nfl/boxscore?id=${gameId}`, options),
+          fetch(`https://nfl-api1.p.rapidapi.com/nfl/odds?id=${gameId}`, options)
         ]);
         const boxData = await boxRes.json();
         const oddsData = await oddsRes.json();
@@ -115,6 +116,17 @@ export default function PatriotsDashboard() {
         setWinProbHistory((prev: any) => {
            if (prev.length > 0 && prev[prev.length-1].prob === currentProb) return prev;
            return [...prev.slice(-30), { time: patsEvent.status.displayClock, prob: currentProb }];
+        });
+
+        // Actualizar historial de marcador para el gráfico
+        setScoreHistory((prev: any) => {
+           const newPoint = { 
+             time: patsEvent.status.displayClock, 
+             pats: parseInt(patsTeam.score), 
+             opp: parseInt(comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').score) 
+           };
+           if (prev.length > 0 && prev[prev.length-1].pats === newPoint.pats && prev[prev.length-1].opp === newPoint.opp) return prev;
+           return [...prev.slice(-15), newPoint];
         });
 
         setGameData({
@@ -125,6 +137,7 @@ export default function PatriotsDashboard() {
           odds: oddsData.items?.[0] || { details: "N/A" },
           scoring: boxData.scoringPlays?.slice(-3).reverse() || [],
           situation: comp.situation || {},
+          possession: comp.situation?.possession === patsTeam.id ? 'NE' : 'OPP',
           winProb: currentProb,
           weather: boxData.gameInfo?.weather
         });
@@ -170,8 +183,8 @@ export default function PatriotsDashboard() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* COLUMNA IZQUIERDA */}
         <div className="lg:col-span-4 space-y-6">
+          {/* MARCADOR */}
           <section className="bg-slate-950 border border-blue-900/30 p-6 rounded-sm shadow-2xl">
             <div className="flex justify-between items-center mb-6">
                <div className="text-center">
@@ -203,7 +216,7 @@ export default function PatriotsDashboard() {
             </div>
           </section>
 
-          {/* SELECTOR DE OBJETIVOS RECUPERADO */}
+          {/* SELECTOR DE OBJETIVOS */}
           <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm shadow-xl">
             <h3 className="text-[10px] font-black text-white mb-4 uppercase tracking-[0.2em] flex items-center gap-2 text-blue-400">
               <Crosshair size={14}/> Target_Selection_Unit
@@ -223,6 +236,7 @@ export default function PatriotsDashboard() {
             </div>
           </section>
 
+          {/* STANDINGS */}
           <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm">
              <h3 className="text-[10px] font-black text-white mb-4 uppercase tracking-[0.2em] flex items-center gap-2 text-blue-400"><ListChecks size={14}/> AFC_East_Standings</h3>
              <div className="space-y-2">
@@ -236,10 +250,9 @@ export default function PatriotsDashboard() {
           </section>
         </div>
 
-        {/* COLUMNA DERECHA */}
         <div className="lg:col-span-8 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* TACTICAL DRIVE CON CAMPO RECUPERADO */}
+            {/* TACTICAL DRIVE CON CAMPO */}
             <section className="bg-[#020814] border border-blue-900/20 p-6 rounded-sm shadow-2xl relative">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3"><Target className="text-blue-500" /><h2 className="text-lg font-black uppercase italic">Tactical_Drive</h2></div>
@@ -250,10 +263,10 @@ export default function PatriotsDashboard() {
               <div className="bg-black/40 p-4 italic text-[11px] border-l-4 border-blue-600 leading-relaxed min-h-[60px] text-slate-300">
                 {gameData?.situation?.lastPlay?.text || "Awaiting stadium telemetry feed..."}
               </div>
-              {/* CAMPO FÚTBOL RECUPERADO */}
               <TacticalField yardLine={gameData?.situation?.yardLine} distance={gameData?.situation?.distance} possession={gameData?.possession} />
             </section>
 
+            {/* INJURY REPORT */}
             <section className="bg-slate-950 border border-slate-800 p-6 rounded-sm">
               <div className="flex items-center gap-3 mb-6"><Stethoscope className="text-red-500" size={18} /><h2 className="text-lg font-black uppercase italic">Injury_Report</h2></div>
               <div className="space-y-2">
