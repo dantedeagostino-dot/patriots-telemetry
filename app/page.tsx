@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Shield, Zap, Activity, CloudRain, Target, Crosshair, Cpu, TrendingUp } from 'lucide-react';
-import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip, CartesianGrid, Label } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip, CartesianGrid } from 'recharts';
+
+// URL de la imagen del campo de fútbol (puedes cambiarla si tienes una propia)
+const FIELD_BG_URL = "https://images.unsplash.com/photo-1567596388603-78882b024386?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.0.3";
 
 const PATS_ROSTER = [
   { name: "Drake Maye", id: "4685721", pos: "QB" },
@@ -19,7 +22,6 @@ export default function PatriotsDashboard() {
   const [selectedPlayer, setSelectedPlayer] = useState(PATS_ROSTER[0]);
   const [playerBio, setPlayerBio] = useState<any>(null);
   
-  // Referencia para mantener el historial vivo sin importar los cambios de UI
   const historyRef = useRef<any>([]);
 
   const fetchGameData = useCallback(async () => {
@@ -31,7 +33,6 @@ export default function PatriotsDashboard() {
       }
     };
 
-    // Fecha dinámica para el partido actual (Dec 28, 2025)
     const now = new Date();
     const y = now.getFullYear().toString();
     const m = String(now.getMonth() + 1).padStart(2, '0');
@@ -50,11 +51,9 @@ export default function PatriotsDashboard() {
         const patsTeam = comp.competitors.find((c: any) => c.team.abbreviation === 'NE');
         const oppTeam = comp.competitors.find((c: any) => c.team.abbreviation !== 'NE');
         
-        // LÓGICA DE PROBABILIDAD REAL + HEURÍSTICA
         let prob = patsTeam.winProbability || 50;
         if (prob < 1 && prob > 0) prob = prob * 100;
         
-        // Si la API dice 50% pero vamos ganando 28-3, forzamos la tendencia visual
         const scoreDiff = parseInt(patsTeam.score) - parseInt(oppTeam.score);
         if (prob === 50 && scoreDiff !== 0) {
             prob = 50 + (scoreDiff * 1.8);
@@ -64,7 +63,6 @@ export default function PatriotsDashboard() {
 
         const timestamp = patsEvent.status.displayClock;
         
-        // Solo añadimos punto si el reloj avanzó
         if (historyRef.current.length === 0 || historyRef.current[historyRef.current.length - 1].time !== timestamp) {
           const newPoint = { time: timestamp, prob: parseFloat(prob.toFixed(1)) };
           historyRef.current = [...historyRef.current.slice(-40), newPoint];
@@ -110,30 +108,28 @@ export default function PatriotsDashboard() {
     fetchPlayerBio();
   }, [fetchPlayerBio]);
 
-  if (loading) return <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono text-blue-500 animate-pulse"><Cpu size={48} className="mb-4" />FINALIZING_SYSTEM_V3.5...</div>;
+  if (loading) return <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono text-blue-500 animate-pulse"><Cpu size={48} className="mb-4" />LOADING_FIELD_DATA_V3.6...</div>;
 
   return (
     <main className="min-h-screen bg-[#000d16] text-slate-100 p-4 lg:p-6 font-mono overflow-x-hidden">
-      {/* CABECERA */}
       <header className="flex flex-col md:flex-row justify-between items-center border-b border-blue-900/50 pb-4 mb-6 gap-4">
         <div className="flex items-center gap-4">
           <div className="bg-red-600 p-2 transform -skew-x-12 shadow-[0_0_15px_red]"><Shield size={24} /></div>
           <div>
-            <h1 className="text-xl font-black italic uppercase tracking-tighter text-white">Patriots_Command_v3.5</h1>
+            <h1 className="text-xl font-black italic uppercase tracking-tighter text-white">Patriots_Command_v3.6</h1>
             <div className="flex gap-3 text-[9px] font-bold">
-               <span className={gameData?.isLive ? 'text-green-500 animate-pulse' : 'text-slate-500'}>● {gameData?.isLive ? 'LIVE_UPLINK' : 'UPLINK_STANDBY'}</span>
+               <span className={gameData?.isLive ? 'text-green-500 animate-pulse' : 'text-slate-500'}>● {gameData?.isLive ? 'LIVE_UPLINK' : 'STANDBY'}</span>
                <span className="text-blue-400 uppercase tracking-widest"><CloudRain size={10} className="inline mr-1"/> {gameData?.weather?.displayValue || 'Stable'}</span>
             </div>
           </div>
         </div>
-        <div className="bg-blue-900/40 border border-blue-500/50 px-6 py-2 rounded-sm text-center">
+        <div className="bg-blue-950/40 border border-blue-500/30 px-6 py-2 rounded-sm text-center">
           <p className="text-[10px] text-blue-300 font-bold uppercase">{gameData?.clock} - Q{gameData?.period}</p>
           <p className="text-xl font-black text-white tracking-widest uppercase">{gameData?.status || 'OFFLINE'}</p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LADO IZQUIERDO: SCORE & STOCK CHART */}
         <div className="lg:col-span-4 space-y-4">
           <section className="bg-slate-950 border border-blue-900/30 p-6 rounded-sm shadow-2xl relative overflow-hidden">
             <div className="flex justify-between items-center text-center mb-8">
@@ -142,31 +138,42 @@ export default function PatriotsDashboard() {
                <div><p className="text-slate-500 text-xs font-black italic">{gameData?.score?.oppName || 'NYJ'}</p><p className="text-7xl font-black">{gameData?.score?.opponent || 0}</p></div>
             </div>
             
-            {/* GRÁFICO ESTILO STOCK (BASADO EN DIBUJO) */}
-            <div className="h-56 w-full bg-black/60 border border-slate-900 p-4 rounded-sm relative">
-               <div className="flex justify-between items-center mb-6">
-                  <p className="text-[10px] text-blue-400 font-black uppercase flex items-center gap-2 tracking-widest"><TrendingUp size={14}/> Win_Prob_Stock</p>
-                  <span className="text-xs font-black text-white bg-blue-600 px-3 py-1 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.6)] animate-pulse">{gameData?.winProb}%</span>
-               </div>
-               <ResponsiveContainer width="100%" height="70%">
-                  <LineChart data={winProbHistory.length > 0 ? winProbHistory : [{time: '15:00', prob: 50}, {time: '14:59', prob: 50}]}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" hide />
-                    <YAxis domain={[0, 100]} hide />
-                    <Tooltip contentStyle={{backgroundColor: '#000', border: '1px solid #3b82f6', fontSize: '9px'}} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="prob" 
-                      stroke="#3b82f6" 
-                      strokeWidth={3} 
-                      dot={{ r: 3, fill: '#3b82f6', strokeWidth: 1, stroke: '#fff' }} 
-                      isAnimationActive={false} 
-                    />
-                  </LineChart>
-               </ResponsiveContainer>
-               <div className="flex justify-between mt-2 border-t border-slate-900 pt-1">
-                  <p className="text-[8px] text-slate-500 uppercase font-black tracking-widest">Time_Match</p>
-                  <p className="text-[8px] text-slate-500 font-black italic">%_Probability</p>
+            {/* NUEVO GRÁFICO CON FONDO DE ESTADIO */}
+            <div 
+              className="h-56 w-full border border-slate-900 rounded-sm relative overflow-hidden shadow-xl"
+              style={{
+                backgroundImage: `url('${FIELD_BG_URL}')`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }}
+            >
+               {/* CAPA OSCURA SUPERPUESTA (OVERLAY) PARA LEER EL GRÁFICO */}
+               <div className="absolute inset-0 bg-[#000d16]/80 p-4 z-10">
+                 <div className="flex justify-between items-center mb-6">
+                    <p className="text-[10px] text-blue-400 font-black uppercase flex items-center gap-2 tracking-widest drop-shadow-md"><TrendingUp size={14}/> Win_Prob_Stock</p>
+                    <span className="text-xs font-black text-white bg-blue-600/80 px-3 py-1 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.8)] backdrop-blur-sm animate-pulse">{gameData?.winProb}%</span>
+                 </div>
+                 <ResponsiveContainer width="100%" height="70%">
+                    <LineChart data={winProbHistory.length > 0 ? winProbHistory : [{time: '15:00', prob: 50}, {time: '14:59', prob: 50}]}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#3b82f6" opacity={0.2} vertical={false} />
+                      <XAxis dataKey="time" hide />
+                      <YAxis domain={[0, 100]} hide />
+                      <Tooltip contentStyle={{backgroundColor: '#000d16', border: '1px solid #3b82f6', fontSize: '9px', color: '#fff'}} itemStyle={{color: '#3b82f6'}} cursor={{stroke: '#3b82f6', strokeWidth: 1}}/>
+                      <Line 
+                        type="monotone" 
+                        dataKey="prob" 
+                        stroke="#3b82f6" 
+                        strokeWidth={3} 
+                        dot={{ r: 4, fill: '#000d16', strokeWidth: 2, stroke: '#3b82f6' }} 
+                        activeDot={{ r: 6, fill: '#3b82f6', stroke: '#fff' }}
+                        isAnimationActive={false} 
+                      />
+                    </LineChart>
+                 </ResponsiveContainer>
+                 <div className="flex justify-between mt-2 border-t border-slate-500/30 pt-1 relative z-20">
+                    <p className="text-[8px] text-slate-400 uppercase font-black tracking-widest drop-shadow">Time_Match</p>
+                    <p className="text-[8px] text-slate-400 font-black italic drop-shadow">%_Probability</p>
+                 </div>
                </div>
             </div>
           </section>
@@ -183,7 +190,6 @@ export default function PatriotsDashboard() {
           </section>
         </div>
 
-        {/* LADO DERECHO: TACTICAL DRIVE EXPANDIDA */}
         <div className="lg:col-span-8">
           <section className="bg-[#020814] border border-blue-900/20 p-8 rounded-sm shadow-2xl h-full flex flex-col relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-40 animate-pulse"></div>
@@ -203,7 +209,6 @@ export default function PatriotsDashboard() {
           </section>
         </div>
 
-        {/* PIE DE PÁGINA: BIOMETRIC FEED */}
         <div className="lg:col-span-12">
           <section className="bg-gradient-to-r from-slate-950 to-blue-950/30 border-t-2 border-red-600 p-6 shadow-2xl flex flex-col md:flex-row items-center gap-12 text-white">
              <div className="relative">
