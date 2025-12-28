@@ -1,143 +1,206 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
-import { Target, Activity, MapPin, History, Zap, MessageSquare, ChevronRight } from "lucide-react";
+import { Target, Cpu, ChevronRight, Activity, MapPin, History, Zap, MessageSquare, BarChart3 } from "lucide-react";
 
 export default function PatriotsTelemetryPro() {
   const [hasMounted, setHasMounted] = useState(false);
-  const [selectedPlayerId, setSelectedPlayerId] = useState("QB");
-  
-  // --- 1. ESTADO DEL RELOJ (Contador en segundos) ---
-  const [secondsLeft, setSecondsLeft] = useState(82); // 01:22 = 82 segundos
-  const [isPaused, setIsPaused] = useState(false);
+  const [lastPlay, setLastPlay] = useState("Drake Maye pass short right to Hunter Henry for 12 yards, TOUCHDOWN.");
 
+  // Estado con toda la información recuperada de la API
   const [game, setGame] = useState({
-    homeTeam: "PATRIOTS",
-    awayTeam: "NY JETS",
     scoreNE: 35,
-    scoreOpp: 3,
+    scoreNYJ: 3,
     winProb: 98,
-    quarter: "2nd",
-    lastPlay: "Drake Maye pass short right to Hunter Henry for 12 yards, TOUCHDOWN.",
-    units: {
-      "QB": { name: "Drake Maye", stats: "18/24, 284 YDS, 3 TD" },
-      "RB": { name: "R. Stevenson", stats: "14 CAR, 82 YDS, 1 TD" },
-      "TE": { name: "Hunter Henry", stats: "4 REC, 52 YDS, 1 TD" }
+    teamStats: {
+      totalYards: { ne: 342, opp: 112 },
+      possession: { ne: "24:12", opp: "12:10" },
+      thirdDown: { ne: "6/8", opp: "1/7" },
+      turnovers: { ne: 0, opp: 2 }
+    },
+    currentDrive: {
+      plays: 8,
+      yards: 72,
+      time: "04:12",
+      pos: 88, // % para el mapa táctico
+      down: "1st & Goal"
+    },
+    activeUnit: {
+      pos: "QB",
+      name: "Drake Maye",
+      stats: "18/24, 284 YDS, 3 TD"
     }
   });
-
-  // --- 2. LÓGICA DEL CONTADOR EN TIEMPO REAL ---
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (!isPaused && secondsLeft > 0) {
-        setSecondsLeft((prev) => prev - 1);
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isPaused, secondsLeft]);
-
-  // Formateador de segundos a MM:SS
-  const formatClock = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   useEffect(() => { setHasMounted(true); }, []);
   if (!hasMounted) return <div className="min-h-screen bg-[#02040a]" />;
 
   return (
-    <div className="min-h-screen bg-[#02040a] text-slate-300 p-4 lg:p-8 font-sans">
+    <div className="min-h-screen bg-[#02040a] text-slate-300 p-4 lg:p-8 font-sans selection:bg-blue-500/30">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* --- HEADER: Patriots vs NY Jets --- */}
-        <div className="flex justify-between items-start border-b border-white/5 pb-6">
+        {/* --- HEADER: SCOREBOARD --- */}
+        <div className="flex justify-between items-end border-b border-white/5 pb-6">
           <div className="space-y-1">
             <h1 className="text-3xl font-black italic tracking-tighter text-white uppercase">
-              {game.homeTeam} <span className="text-blue-600">TELEMETRY</span>
+              Patriots <span className="text-blue-600">Telemetry</span>
             </h1>
             <div className="flex items-center gap-3">
               <span className="flex h-2 w-2 rounded-full bg-red-600 animate-pulse" />
               <span className="text-[10px] font-bold text-slate-500 tracking-[0.3em] uppercase">
-                LIVE MATCH TRACKER • WEEK 17 • AT {game.awayTeam}
+                Week 17 • Live • 2nd Quarter • 01:22
               </span>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-5xl font-black tracking-tighter text-white">
-              {game.scoreNE} - {game.scoreOpp}
-            </div>
-            <div className="text-[10px] font-bold text-blue-500 uppercase tracking-[0.2em] mt-1">
-              {game.quarter} QUARTER • <span className="text-white font-mono">{formatClock(secondsLeft)}</span>
-            </div>
+          <div className="text-6xl font-black tracking-tighter text-white italic">
+            {game.scoreNE}<span className="text-blue-600">/</span>{game.scoreNYJ}
           </div>
         </div>
 
-        {/* PLAY-BY-PLAY */}
-        <div className="bg-blue-600/10 border border-blue-500/20 p-4 rounded-xl flex items-center gap-4">
-          <MessageSquare size={16} className="text-blue-500" />
-          <p className="text-sm font-bold text-white italic tracking-tight">{game.lastPlay}</p>
-        </div>
+        {/* --- NUEVO: PLAY-BY-PLAY TICKER --- */}
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-blue-600/10 border border-blue-500/20 p-4 rounded-xl flex items-center gap-4"
+        >
+          <div className="bg-blue-500 p-2 rounded-lg">
+            <MessageSquare size={16} className="text-white" />
+          </div>
+          <div className="flex-1">
+            <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest block mb-1">Last Play Result</span>
+            <p className="text-sm font-bold text-white italic tracking-tight">{lastPlay}</p>
+          </div>
+          <div className="hidden md:block h-8 w-[1px] bg-white/10 mx-2" />
+          <div className="hidden md:block text-right">
+            <span className="text-[8px] font-bold text-slate-500 uppercase block">Drive Progress</span>
+            <span className="text-xs font-black text-white">{game.currentDrive.yards} YDS Gained</span>
+          </div>
+        </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* COLUMNA PRINCIPAL (ANALYTICS & TACTICAL) */}
           <div className="lg:col-span-2 space-y-6">
+            
             {/* WIN PROBABILITY */}
             <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-6 relative overflow-hidden shadow-2xl">
                <div className="flex justify-between items-start mb-4">
-                  <span className="text-[10px] font-black tracking-[0.2em] text-blue-500 uppercase italic">Win_Probability</span>
+                  <div className="flex items-center gap-2 text-blue-500">
+                    <Activity size={14} strokeWidth={3} />
+                    <span className="text-[10px] font-black tracking-[0.2em] uppercase italic">Win_Probability</span>
+                  </div>
                   <span className="text-4xl font-black italic text-white">{game.winProb}%</span>
                </div>
-               <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
-                  <motion.div animate={{ width: `${game.winProb}%` }} className="h-full bg-blue-600 relative">
+               
+               <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden mb-6">
+                  <motion.div 
+                    initial={{ width: 0 }} animate={{ width: `${game.winProb}%` }}
+                    className="h-full bg-blue-600 relative"
+                  >
                     <motion.div animate={{ x: ["-100%", "200%"] }} transition={{ repeat: Infinity, duration: 4, ease: "linear" }} className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent w-full" />
                   </motion.div>
                </div>
+
+               <div className="h-[180px] w-full opacity-40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={[{p:50},{p:65},{p:85},{p:98}]}>
+                      <Area type="monotone" dataKey="p" stroke="#2563eb" strokeWidth={3} fill="#2563eb" fillOpacity={0.1} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+               </div>
             </section>
 
-            {/* TACTICAL POSITION */}
+            {/* TEAM MATCHUP STATS (Información recuperada) */}
+            <section className="grid grid-cols-4 gap-4">
+               {[
+                 { label: "Total Yards", ne: game.teamStats.totalYards.ne, opp: game.teamStats.totalYards.opp },
+                 { label: "Possession", ne: game.teamStats.possession.ne, opp: game.teamStats.possession.opp },
+                 { label: "3rd Down", ne: game.teamStats.thirdDown.ne, opp: game.teamStats.thirdDown.opp },
+                 { label: "Turnovers", ne: game.teamStats.turnovers.ne, opp: game.teamStats.turnovers.opp },
+               ].map((stat, i) => (
+                 <div key={i} className="bg-[#0a0c14] border border-white/5 p-4 rounded-lg group hover:border-blue-500/30 transition-colors">
+                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest block mb-2">{stat.label}</span>
+                    <div className="flex justify-between items-end">
+                       <span className="text-sm font-black text-blue-500 italic">{stat.ne}</span>
+                       <span className="text-[10px] font-bold text-slate-700">{stat.opp}</span>
+                    </div>
+                 </div>
+               ))}
+            </section>
+
+            {/* TACTICAL DRIVE POSITION */}
             <section className="bg-[#0a0c14] border border-white/5 rounded-xl p-6">
-               <div className="flex items-center gap-2 text-blue-500 text-[10px] font-black uppercase tracking-widest mb-6">
-                 <MapPin size={14} /> Tactical_Drive_Position
+               <div className="flex justify-between items-center mb-6">
+                  <div className="flex items-center gap-2 text-blue-500 text-[10px] font-black uppercase tracking-widest">
+                    <MapPin size={14} /> Tactical_Drive
+                  </div>
+                  <div className="flex gap-4 text-[9px] font-bold text-slate-500 uppercase">
+                     <span className="text-blue-500/50">Plays: {game.currentDrive.plays}</span>
+                     <span>Total Yds: {game.currentDrive.yards}</span>
+                  </div>
                </div>
-               <div className="h-10 w-full bg-slate-900/50 rounded-lg border border-white/5 relative flex items-center shadow-inner">
-                  <motion.div animate={{ left: `88%` }} className="absolute flex flex-col items-center -translate-x-1/2">
-                    <div className="bg-blue-600 text-[8px] font-bold px-1.5 py-0.5 rounded-sm mb-1 text-white">NE BALL</div>
+               <div className="h-10 w-full bg-slate-900/50 rounded-lg border border-white/5 relative flex items-center px-2 shadow-inner">
+                  <motion.div animate={{ left: `${game.currentDrive.pos}%` }} className="absolute flex flex-col items-center -translate-x-1/2">
+                    <div className="bg-blue-600 text-[8px] font-bold px-1 py-0.5 rounded-sm mb-1 text-white">NE BALL</div>
                     <div className="w-2.5 h-2.5 bg-white rotate-45 shadow-[0_0_15px_#fff]" />
                   </motion.div>
+               </div>
+               <div className="grid grid-cols-3 mt-6 pt-4 border-t border-white/5 text-center md:text-left">
+                  <div><p className="text-[8px] text-slate-500 uppercase font-bold tracking-widest">Situation</p><p className="text-lg font-black italic text-white uppercase">{game.currentDrive.down}</p></div>
+                  <div><p className="text-[8px] text-slate-500 uppercase font-bold tracking-widest">Ball On</p><p className="text-lg font-black italic text-white">OPP 12</p></div>
+                  <div className="text-right"><p className="text-[8px] text-slate-500 uppercase font-bold tracking-widest">Drive Clock</p><p className="text-lg font-black italic text-blue-500">{game.currentDrive.time}</p></div>
                </div>
             </section>
           </div>
 
-          {/* SIDEBAR: Unit Selector con Nombres Reales */}
+          {/* SIDEBAR */}
           <div className="space-y-6">
+            
+            {/* SCORING HISTORY */}
+            <section className="bg-[#0a0c14] border border-white/5 rounded-xl overflow-hidden shadow-xl">
+               <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2">
+                  <History size={14} className="text-blue-500" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Scoring_History</span>
+               </div>
+               <div className="p-4 space-y-4">
+                  <div className="border-l-2 border-blue-600 pl-3">
+                    <p className="text-[10px] font-black text-blue-500">2Q • TD • 01:22</p>
+                    <p className="text-xs font-bold text-white uppercase italic">Henry 12yd Pass from Maye</p>
+                  </div>
+                  <div className="border-l-2 border-slate-700 pl-3 opacity-40">
+                    <p className="text-[10px] font-black text-slate-500">2Q • TD • 08:45</p>
+                    <p className="text-xs font-bold text-white uppercase italic">Maye 4yd Rush</p>
+                  </div>
+               </div>
+            </section>
+
+            {/* UNIT SELECTOR CON STATS DETALLADAS */}
             <section className="bg-[#0a0c14] border border-white/5 rounded-xl overflow-hidden shadow-2xl">
                <div className="p-4 bg-white/5 border-b border-white/5 flex items-center gap-2">
                   <Target size={14} className="text-blue-500" />
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Unit_Selector</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Unit_Selector</span>
                </div>
-               
-               <div className="p-5 bg-blue-600/10 relative border-b border-white/5">
-                  <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-600 shadow-[0_0_15px_#2563eb]" />
-                  <p className="text-md font-black text-white italic uppercase tracking-widest">{game.units[selectedPlayerId].name}</p>
-                  <p className="text-[10px] font-bold text-blue-400 mt-1">{game.units[selectedPlayerId].stats}</p>
-               </div>
-
                <div className="divide-y divide-white/5">
-                  {Object.keys(game.units).map((id) => (
-                    <button 
-                      key={id} 
-                      onClick={() => setSelectedPlayerId(id)}
-                      className="w-full flex justify-between items-center p-4 hover:bg-white/5 transition-all"
-                    >
-                       <span className="text-[10px] font-black text-slate-600">{id}</span>
-                       <span className="text-xs font-bold text-slate-400 uppercase italic">{game.units[id].name}</span>
-                       <ChevronRight size={14} className="text-white/10" />
-                    </button>
+                  <div className="p-4 bg-blue-600/10 relative">
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-600 shadow-[0_0_10px_#2563eb]" />
+                    <div className="flex justify-between items-center mb-1">
+                       <span className="text-[10px] font-black text-blue-500">{game.activeUnit.pos}</span>
+                       <Zap size={10} className="text-blue-500 animate-pulse" />
+                    </div>
+                    <p className="text-sm font-black text-white italic uppercase tracking-widest">{game.activeUnit.name}</p>
+                    <p className="text-[10px] font-bold text-blue-400 mt-1 font-mono">{game.activeUnit.stats}</p>
+                  </div>
+                  {["RB R. Stevenson", "WR J. Polk", "TE H. Henry"].map((p, i) => (
+                    <div key={i} className="p-4 flex justify-between items-center hover:bg-white/5 cursor-pointer group transition-colors">
+                       <span className="text-[10px] font-bold text-slate-600 group-hover:text-slate-400 uppercase tracking-widest">{p}</span>
+                       <ChevronRight size={14} className="text-white/5 group-hover:text-blue-500" />
+                    </div>
                   ))}
                </div>
             </section>
+
           </div>
         </div>
       </div>
