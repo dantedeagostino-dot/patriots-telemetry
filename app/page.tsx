@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { Shield, TrendingUp, Zap, Radio, CloudRain, Activity, ChevronRight, Target, ArrowUpRight, ArrowDownRight, Users, Info, AlertCircle } from 'lucide-react';
-import { AreaChart, Area, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import { Shield, TrendingUp, Zap, Radio, CloudRain, Activity, ChevronRight, Target, ArrowUpRight, ArrowDownRight, Users, Info, AlertCircle, ListChecks, Stethoscope } from 'lucide-react';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 
 const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), { 
   ssr: false,
@@ -17,8 +17,10 @@ export default function PatriotsDashboard() {
   const [winProbHistory, setWinProbHistory] = useState<any>([]);
   const [selectedPlayer, setSelectedPlayer] = useState({ name: "Drake Maye", id: "4685721", pos: "QB" });
   const [playerBio, setPlayerBio] = useState<any>(null);
+  const [standings, setStandings] = useState<any>([]);
+  const [injuries, setInjuries] = useState<any>([]);
 
-  const fetchLiveStats = useCallback(async () => {
+  const fetchProData = useCallback(async () => {
     const options = {
       method: 'GET',
       headers: {
@@ -28,131 +30,116 @@ export default function PatriotsDashboard() {
     };
 
     try {
-      // 1. SCOREBOARD
+      // 1. CARGAR BIO DEL JUGADOR (Siempre se ejecuta)
+      const bioRes = await fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/player/bio?id=${selectedPlayer.id}`, options);
+      const bioData = await bioRes.json();
+      setPlayerBio(bioData.player || bioData); // Manejo de diferentes formatos de respuesta
+
+      // 2. CARGAR POSICIONES Y LESIONES (Datos fijos del equipo)
+      const [standRes, injRes] = await Promise.all([
+        fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/standings', options),
+        fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/injuries-team?id=22', options)
+      ]);
+      const standData = await standRes.json();
+      const injData = await injRes.json();
+      
+      // Filtrar AFC East
+      const afcEast = standData.children?.[0]?.children?.[0]?.standings?.entries || [];
+      setStandings(afcEast);
+      setInjuries(injData.injuries?.slice(0, 5) || []);
+
+      // 3. DATOS DE PARTIDO EN VIVO
       const scoreRes = await fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/scoreboard', options);
       const scoreData = await scoreRes.json();
-      const patsEvent = scoreData.events?.find((e: any) => 
-        e.competitions[0].competitors.some((c: any) => c.team.abbreviation === 'NE')
-      );
+      const patsEvent = scoreData.events?.find((e: any) => e.competitions[0].competitors.some((c: any) => c.team.abbreviation === 'NE'));
 
-      if (!patsEvent) {
-        // MODO OFFLINE SI NO HAY PARTIDO
-        setGameData({ status: "NO_ACTIVE_GAME", isLive: false, score: { patriots: "0", opponent: "0", oppName: "TBD" }, weather: { displayValue: "N/A" }, odds: { details: "OFF_BOARD", overUnder: "-" }, scoring: [], situation: {}, winProb: 50 });
-        return;
+      if (patsEvent) {
+        const gameId = patsEvent.id;
+        const comp = patsEvent.competitions[0];
+        const patsTeam = comp.competitors.find((c: any) => c.team.abbreviation === 'NE');
+        const currentProb = patsTeam.winProbability || 50;
+
+        const [boxRes, oddsRes] = await Promise.all([
+          fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/boxscore?id=${gameId}`, options),
+          fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/odds?id=${gameId}`, options)
+        ]);
+        const boxData = await boxRes.json();
+        const oddsData = await oddsRes.json();
+
+        setWinProbHistory((prev: any) => [...prev.slice(-30), { time: patsEvent.status.displayClock, prob: currentProb }]);
+        setGameData({
+          isLive: patsEvent.status.type.state === 'in',
+          status: patsEvent.status.type.detail,
+          weather: boxData.gameInfo?.weather,
+          score: { patriots: patsTeam.score, opponent: comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').score, oppName: comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').team.abbreviation },
+          timeouts: { pats: patsTeam.timeouts, opp: comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').timeouts },
+          odds: oddsData.items?.[0] || { details: "N/A" },
+          scoring: boxData.scoringPlays?.slice(-3).reverse() || [],
+          situation: comp.situation || {},
+          winProb: currentProb
+        });
+      } else {
+        setGameData({ status: "NO_ACTIVE_GAME", isLive: false, score: { patriots: "0", opponent: "0", oppName: "TBD" }, odds: { details: "OFF_BOARD" }, scoring: [], situation: {}, winProb: 50 });
       }
-
-      const gameId = patsEvent.id;
-      const comp = patsEvent.competitions[0];
-      const patsTeam = comp.competitors.find((c: any) => c.team.abbreviation === 'NE');
-      const currentProb = patsTeam.winProbability || 50;
-
-      // 2. PETICIONES PARALELAS (BOXSCORE Y ODDS)
-      const [boxRes, oddsRes] = await Promise.all([
-        fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/boxscore?id=${gameId}`, options),
-        fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/odds?id=${gameId}`, options)
-      ]);
-
-      const boxData = await boxRes.json();
-      const oddsData = await oddsRes.json();
-
-      // 3. PLAYER BIO (SOLO SI ES NECESARIO)
-      if (!playerBio || playerBio.id !== selectedPlayer.id) {
-        const bioRes = await fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/player/bio?id=${selectedPlayer.id}`, options);
-        const bioData = await bioRes.json();
-        setPlayerBio(bioData);
-      }
-
-      // ACTUALIZAR GRÁFICOS
-      setWinProbHistory((prev: any) => [...prev.slice(-30), { time: patsEvent.status.displayClock, prob: currentProb }]);
-      
-      setGameData({
-        isLive: patsEvent.status.type.state === 'in',
-        status: patsEvent.status.type.detail,
-        clock: patsEvent.status.displayClock,
-        weather: boxData.gameInfo?.weather,
-        score: { 
-          patriots: patsTeam.score, 
-          opponent: comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').score, 
-          oppName: comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').team.abbreviation 
-        },
-        timeouts: { pats: patsTeam.timeouts, opp: comp.competitors.find((c: any) => c.team.abbreviation !== 'NE').timeouts },
-        odds: oddsData.items?.[0] || { details: "N/A", overUnder: "N/A" },
-        scoring: boxData.scoringPlays?.slice(-3).reverse() || [],
-        situation: comp.situation || {},
-        winProb: currentProb
-      });
-
     } catch (error) {
-      console.error("Link Error:", error);
+      console.error("Telemetry Error:", error);
     } finally {
-      // ESTO ES LO QUE EVITA LA PANTALLA NEGRA
       setLoading(false);
     }
-  }, [selectedPlayer.id, playerBio]);
+  }, [selectedPlayer.id]);
 
   useEffect(() => {
-    fetchLiveStats();
-    const interval = setInterval(fetchLiveStats, 15000);
+    fetchProData();
+    const interval = setInterval(fetchProData, 15000);
     return () => clearInterval(interval);
-  }, [fetchLiveStats]);
+  }, [fetchProData]);
 
-  if (loading) return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono text-blue-500">
-      <Zap className="animate-bounce mb-4" size={48} />
-      <p className="tracking-[0.5em] animate-pulse font-black">SYNCING_PRO_TELEMETRY...</p>
-    </div>
-  );
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-blue-500 font-mono animate-pulse">ESTABLISHING_PRO_LINK...</div>;
 
   return (
-    <main className="min-h-screen bg-[#000d16] text-slate-100 p-4 lg:p-8 font-mono">
+    <main className="min-h-screen bg-[#000d16] text-slate-100 p-4 lg:p-8 font-mono overflow-x-hidden">
       {/* HEADER */}
       <header className="flex flex-col lg:flex-row justify-between items-start border-b border-blue-900/50 pb-6 mb-8 gap-4">
         <div className="flex items-center gap-5">
           <div className="bg-red-600 p-3 transform -skew-x-12 shadow-[0_0_15px_red]"><Shield size={32} /></div>
           <div>
-            <h1 className="text-3xl font-black italic tracking-tighter uppercase">Patriots_Command_Center</h1>
+            <h1 className="text-3xl font-black italic tracking-tighter uppercase">Patriots_Command_Center_v2.5</h1>
             <div className="flex gap-4 mt-2 text-[10px] font-bold">
-               <span className={`${gameData.isLive ? 'text-green-500 animate-pulse' : 'text-slate-600'} flex items-center gap-1`}>
-                 <Activity size={12}/> {gameData.isLive ? 'LIVE_FEED' : 'STANDBY'}
+               <span className={`${gameData?.isLive ? 'text-green-500 animate-pulse' : 'text-slate-600'} flex items-center gap-1`}>
+                 <Activity size={12}/> {gameData?.isLive ? 'LIVE_FEED' : 'STANDBY'}
                </span>
-               <span className="text-slate-500 flex items-center gap-1"><CloudRain size={12}/> {gameData.weather?.displayValue || 'N/A'}</span>
-               <span className="text-yellow-500 border border-yellow-900/50 px-2 uppercase">Odds: {gameData.odds?.details}</span>
+               <span className="text-yellow-500 border border-yellow-900/50 px-2 uppercase font-black">Odds: {gameData?.odds?.details}</span>
             </div>
           </div>
         </div>
         <div className="bg-slate-900/50 border border-blue-500/20 p-3 px-6 text-center">
-          <p className="text-[9px] text-slate-500 uppercase italic">Game_Clock</p>
-          <p className="text-2xl font-black text-blue-400 tracking-widest">{gameData.status}</p>
+          <p className="text-[9px] text-slate-500 uppercase italic">Status</p>
+          <p className="text-2xl font-black text-blue-400">{gameData?.status || 'OFFLINE'}</p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* COLUMNA IZQUIERDA: SCORE & STANDINGS */}
         <div className="lg:col-span-4 space-y-6">
-          <section className="bg-slate-950 border border-blue-900/30 p-6 rounded-sm">
-            <div className="flex justify-between items-center mb-8">
+          <section className="bg-slate-950 border border-blue-900/30 p-6 rounded-sm shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
                <div className="text-center">
-                 <p className="text-blue-500 text-xs font-bold mb-1">NE</p>
-                 <p className="text-7xl font-black">{gameData.score.patriots}</p>
+                 <p className="text-blue-500 text-xs font-black">NE</p>
+                 <p className="text-7xl font-black">{gameData?.score.patriots}</p>
                  <div className="flex gap-1 justify-center mt-2">
-                   {[...Array(3)].map((_, i) => <div key={i} className={`h-1 w-3 ${i < (gameData.timeouts?.pats || 0) ? 'bg-yellow-400' : 'bg-slate-800'}`} />)}
+                   {[...Array(3)].map((_, i) => <div key={i} className={`h-1 w-3 ${i < (gameData?.timeouts?.pats || 0) ? 'bg-yellow-400 shadow-[0_0_5px_yellow]' : 'bg-slate-800'}`} />)}
                  </div>
                </div>
-               <div className="text-slate-800 font-black text-xl italic text-center">VS<br/><span className="text-[8px] not-italic opacity-30">V2.0</span></div>
+               <div className="text-slate-800 font-black text-xl italic">VS</div>
                <div className="text-center opacity-60">
-                 <p className="text-slate-500 text-xs font-bold mb-1">{gameData.score.oppName}</p>
-                 <p className="text-7xl font-black">{gameData.score.opponent}</p>
-                 <div className="flex gap-1 justify-center mt-2">
-                   {[...Array(3)].map((_, i) => <div key={i} className={`h-1 w-3 ${i < (gameData.timeouts?.opp || 0) ? 'bg-red-800' : 'bg-slate-800'}`} />)}
-                 </div>
+                 <p className="text-slate-500 text-xs font-black">{gameData?.score.oppName}</p>
+                 <p className="text-7xl font-black">{gameData?.score.opponent}</p>
                </div>
             </div>
 
             <div className="bg-black/50 p-4 border border-slate-900 rounded-sm">
-              <div className="flex justify-between items-end mb-2">
-                <p className="text-[9px] text-blue-500 font-bold uppercase tracking-widest italic font-black">Win_Prob_Ticker</p>
-                <p className="text-3xl font-black italic">{gameData.winProb.toFixed(1)}%</p>
-              </div>
-              <div className="h-[80px] w-full">
+              <p className="text-[9px] text-blue-500 font-black uppercase mb-2">Win_Probability_Trend</p>
+              <div className="h-[60px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={winProbHistory.length > 1 ? winProbHistory : [{prob: 50}, {prob: 50}]}>
                     <defs><linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/><stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs>
@@ -163,42 +150,58 @@ export default function PatriotsDashboard() {
             </div>
           </section>
 
+          {/* DIVISION STANDINGS */}
           <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm">
-             <h3 className="text-[10px] font-bold text-white mb-4 uppercase tracking-[0.2em] flex items-center gap-2"><Info size={14} className="text-blue-500"/> Scoring_History</h3>
-             <div className="space-y-3 min-h-[100px]">
-                {gameData.scoring.length > 0 ? gameData.scoring.map((play: any, i: number) => (
-                  <div key={i} className="text-[10px] border-l-2 border-red-600 pl-3 py-1 bg-white/5">
-                    <p className="font-bold text-blue-400">{play.team?.abbreviation} - {play.type?.text}</p>
-                    <p className="italic text-slate-400">{play.text}</p>
+             <h3 className="text-[10px] font-black text-white mb-4 uppercase tracking-[0.2em] flex items-center gap-2 text-blue-400"><ListChecks size={14}/> AFC_East_Standings</h3>
+             <div className="space-y-2">
+                {standings.map((team: any, i: number) => (
+                  <div key={i} className={`flex justify-between text-[10px] p-2 border-l-2 ${team.team.abbreviation === 'NE' ? 'bg-blue-900/20 border-blue-500' : 'bg-white/5 border-slate-800'}`}>
+                    <span className="font-bold text-slate-300">{team.team.displayName}</span>
+                    <span className="text-white font-black">{team.stats.find((s:any)=>s.name==='wins')?.value}-{team.stats.find((s:any)=>s.name==='losses')?.value}</span>
                   </div>
-                )) : <p className="text-[10px] text-slate-600 italic">No scoring events recorded yet.</p>}
+                ))}
              </div>
           </section>
         </div>
 
+        {/* COLUMNA DERECHA: DRIVE & INJURIES */}
         <div className="lg:col-span-8 space-y-6">
-          <section className="bg-[#020814] border border-blue-900/20 p-8 rounded-sm relative shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-3"><Target className="text-blue-500" /><h2 className="text-xl font-black italic uppercase">Tactical_Drive</h2></div>
-              <div className="text-[10px] font-black px-4 py-1 bg-blue-950/30 border border-blue-500/30 rounded-full">STATUS: {gameData.isLive ? 'STABLE' : 'STANDBY'}</div>
-            </div>
-            <div className="bg-black/40 p-6 italic text-sm border-l-4 border-blue-600 mb-6 min-h-[80px]">
-              {gameData.situation?.lastPlay?.text || "Awaiting tactical feed from stadium..."}
-            </div>
-          </section>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <section className="bg-[#020814] border border-blue-900/20 p-6 rounded-sm shadow-2xl">
+              <div className="flex items-center gap-3 mb-6"><Target className="text-blue-500" /><h2 className="text-lg font-black uppercase italic">Tactical_Drive</h2></div>
+              <div className="bg-black/40 p-4 italic text-xs border-l-4 border-blue-600 min-h-[100px] leading-relaxed">
+                {gameData?.situation?.lastPlay?.text || "Awaiting tactical feed from stadium sensors..."}
+              </div>
+            </section>
 
+            {/* INJURY REPORT */}
+            <section className="bg-slate-950 border border-slate-800 p-6 rounded-sm shadow-2xl">
+              <div className="flex items-center gap-3 mb-6"><Stethoscope className="text-red-500" size={18} /><h2 className="text-lg font-black uppercase italic">Injury_Report</h2></div>
+              <div className="space-y-3">
+                {injuries.length > 0 ? injuries.map((inj: any, i: number) => (
+                  <div key={i} className="flex justify-between items-center text-[10px] border-b border-slate-900 pb-2">
+                    <span className="text-slate-300">{inj.athlete.displayName} <span className="text-blue-500">[{inj.athlete.position.abbreviation}]</span></span>
+                    <span className="text-red-500 font-bold uppercase">{inj.status}</span>
+                  </div>
+                )) : <p className="text-[10px] text-slate-600">No major injuries reported.</p>}
+              </div>
+            </section>
+          </div>
+
+          {/* PLAYER BIO MONITOR (FOTO ARREGLADA) */}
           <section className="bg-gradient-to-r from-slate-950 to-blue-950/20 border-t-2 border-red-600 p-6 shadow-2xl flex flex-col md:flex-row items-center gap-8">
              <div className="relative">
                 <img 
-                  src={playerBio?.headshot?.href || 'https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/0.png'} 
-                  alt="Player" 
-                  className="w-24 h-24 rounded-full border-2 border-blue-600 bg-slate-900 object-cover"
+                  src={playerBio?.headshot?.href || `https://a.espncdn.com/i/headshots/nfl/players/full/${selectedPlayer.id}.png`} 
+                  alt="Player Unit" 
+                  className="w-28 h-28 rounded-full border-2 border-blue-600 bg-slate-900 object-cover shadow-[0_0_15px_cyan]"
+                  onError={(e:any) => e.target.src = 'https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/0.png'}
                 />
-                <div className="absolute -bottom-2 -right-2 bg-blue-600 text-[8px] font-black px-2 py-1 uppercase">Target_Unit</div>
+                <div className="absolute -bottom-2 -right-2 bg-blue-600 text-[8px] font-black px-2 py-1 uppercase shadow-lg">Target_Unit</div>
              </div>
              <div className="flex-1 text-center md:text-left">
-                <p className="text-[10px] text-slate-500 font-black uppercase italic mb-1">Biometric_Feed:</p>
-                <h3 className="text-4xl font-black italic tracking-tighter uppercase text-white">{playerBio?.displayName || 'Drake Maye'}</h3>
+                <p className="text-[10px] text-slate-500 font-black uppercase italic mb-1 tracking-[0.3em]">Biometric_Feed:</p>
+                <h3 className="text-5xl font-black italic tracking-tighter uppercase text-white">{playerBio?.displayName || selectedPlayer.name}</h3>
                 <div className="flex gap-4 mt-2 text-[10px] font-bold text-blue-400">
                   <span>AGE: {playerBio?.age || '--'}</span>
                   <span>EXP: {playerBio?.experience?.years || 'R'} YRS</span>
@@ -212,7 +215,7 @@ export default function PatriotsDashboard() {
                 </div>
                 <div className="text-center">
                   <p className="text-[9px] text-slate-500 uppercase font-black">Status</p>
-                  <p className="text-2xl font-black text-green-500">{playerBio?.status?.type === 'active' ? 'ACT' : 'OFF'}</p>
+                  <p className="text-2xl font-black text-green-500">{playerBio?.status?.type || 'ACT'}</p>
                 </div>
              </div>
           </section>
