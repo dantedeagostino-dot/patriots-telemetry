@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { Shield, TrendingUp, Zap, Radio, CloudRain, Activity, ChevronRight, Target, ArrowUpRight, ArrowDownRight, Users, Info, ListChecks, Stethoscope, Crosshair } from 'lucide-react';
+import { Shield, TrendingUp, Zap, Radio, CloudRain, Activity, ChevronRight, Target, ArrowUpRight, ArrowDownRight, Users, Info, ListChecks, Stethoscope, Crosshair, Map } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 
 const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), { 
@@ -10,15 +10,54 @@ const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), {
   loading: () => <div className="h-[150px] w-full bg-slate-900/20 animate-pulse rounded" />
 });
 
-// 1. ROSTER DE OBJETIVOS (Añade aquí los jugadores que quieras monitorear)
+// ROSTER DE OBJETIVOS
 const PATS_ROSTER = [
   { name: "Drake Maye", id: "4685721", pos: "QB" },
   { name: "R. Stevenson", id: "4242335", pos: "RB" },
   { name: "Ja'Lynn Polk", id: "4430839", pos: "WR" },
   { name: "Hunter Henry", id: "2976212", pos: "TE" },
-  { name: "C. Gonzalez", id: "4426336", pos: "CB" },
-  { name: "Kyle Dugger", id: "4241471", pos: "S" }
+  { name: "C. Gonzalez", id: "4426336", pos: "CB" }
 ];
+
+// COMPONENTE: EFECTO MATRIX ORIGINAL RECUPERADO
+const MatrixLoading = () => (
+  <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono overflow-hidden relative text-blue-500">
+    <div className="absolute inset-0 opacity-10 pointer-events-none text-green-500 text-[10px] leading-none overflow-hidden break-all">
+      {Array(20).fill("01101001010110PATS0101010101010MAYEDRAKE010101010").map((s, i) => (
+        <p key={i} className="animate-pulse" style={{ animationDelay: `${i * 100}ms` }}>{s}</p>
+      ))}
+    </div>
+    <Zap className="animate-bounce mb-4 relative z-10" size={48} />
+    <p className="tracking-[0.5em] animate-pulse font-black uppercase">Establishing_NE_Uplink</p>
+    <p className="text-slate-600 text-[9px] mt-2 uppercase italic">Encrypting Data Feed...</p>
+  </div>
+);
+
+// COMPONENTE: CAMPO TÁCTICO ORIGINAL RECUPERADO
+const TacticalField = ({ yardLine, distance, possession }: any) => {
+  const [side, lineStr] = yardLine && typeof yardLine === 'string' ? yardLine.split(' ') : ['NE', '50'];
+  const line = parseInt(lineStr) || 50;
+  const absoluteYardLine = side === 'NE' ? line : 100 - line;
+  const firstDownLine = absoluteYardLine + (possession === 'NE' ? distance : -distance);
+
+  return (
+    <div className="relative h-20 bg-[#0a141d] border border-blue-900/30 rounded overflow-hidden flex items-center shadow-inner mt-4">
+      <div className="absolute left-0 w-[8%] h-full bg-blue-900/20 border-r border-blue-800/50 flex items-center justify-center">
+        <span className="text-blue-500/20 font-black rotate-90 text-[8px] tracking-[0.3em]">PATS</span>
+      </div>
+      <div className="absolute right-0 w-[8%] h-full bg-red-900/10 border-l border-red-800/50 flex items-center justify-center">
+        <span className="text-red-500/20 font-black -rotate-90 text-[8px] tracking-[0.3em]">OPP</span>
+      </div>
+      <div className="relative w-[84%] h-full ml-[8%] flex justify-between">
+        {[10, 20, 30, 40, 50, 40, 30, 20, 10].map((_, i) => (
+          <div key={i} className="h-full w-px bg-slate-800/40"></div>
+        ))}
+        <div className="absolute top-0 h-full w-1 bg-blue-500 shadow-[0_0_15px_cyan] z-20 transition-all duration-1000" style={{ left: `${absoluteYardLine}%` }}></div>
+        <div className="absolute top-0 h-full w-1 bg-yellow-400 opacity-60 z-10 transition-all duration-1000" style={{ left: `${firstDownLine}%` }}></div>
+      </div>
+    </div>
+  );
+};
 
 export default function PatriotsDashboard() {
   const [gameData, setGameData] = useState<any>(null);
@@ -27,8 +66,6 @@ export default function PatriotsDashboard() {
   const [winProbHistory, setWinProbHistory] = useState<any>([]);
   const [standings, setStandings] = useState<any>([]);
   const [injuries, setInjuries] = useState<any>([]);
-  
-  // ESTADO DEL JUGADOR SELECCIONADO
   const [selectedPlayer, setSelectedPlayer] = useState(PATS_ROSTER[0]);
   const [playerBio, setPlayerBio] = useState<any>(null);
 
@@ -42,23 +79,22 @@ export default function PatriotsDashboard() {
     };
 
     try {
-      // 1. CARGAR BIO DEL JUGADOR SELECCIONADO
-      const bioRes = await fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/player/bio?id=${selectedPlayer.id}`, options);
-      const bioData = await bioRes.json();
-      setPlayerBio(bioData.player || bioData);
-
-      // 2. CARGAR POSICIONES Y LESIONES
-      const [standRes, injRes] = await Promise.all([
+      // 1. BIO Y DATOS FIJOS
+      const [bioRes, standRes, injRes] = await Promise.all([
+        fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/player/bio?id=${selectedPlayer.id}`, options),
         fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/standings', options),
         fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/injuries-team?id=22', options)
       ]);
+      
+      const bioData = await bioRes.json();
       const standData = await standRes.json();
       const injData = await injRes.json();
       
+      setPlayerBio(bioData.player || bioData);
       setStandings(standData.children?.[0]?.children?.[0]?.standings?.entries || []);
       setInjuries(injData.injuries?.slice(0, 5) || []);
 
-      // 3. DATOS DE PARTIDO
+      // 2. DATOS DE PARTIDO
       const scoreRes = await fetch('https://nfl-api1.p.rapidapi.com/v2/nfl/scoreboard', options);
       const scoreData = await scoreRes.json();
       const patsEvent = scoreData.events?.find((e: any) => e.competitions[0].competitors.some((c: any) => c.team.abbreviation === 'NE'));
@@ -76,7 +112,11 @@ export default function PatriotsDashboard() {
         const boxData = await boxRes.json();
         const oddsData = await oddsRes.json();
 
-        setWinProbHistory((prev: any) => [...prev.slice(-30), { time: patsEvent.status.displayClock, prob: currentProb }]);
+        setWinProbHistory((prev: any) => {
+           if (prev.length > 0 && prev[prev.length-1].prob === currentProb) return prev;
+           return [...prev.slice(-30), { time: patsEvent.status.displayClock, prob: currentProb }];
+        });
+
         setGameData({
           isLive: patsEvent.status.type.state === 'in',
           status: patsEvent.status.type.detail,
@@ -89,14 +129,14 @@ export default function PatriotsDashboard() {
           weather: boxData.gameInfo?.weather
         });
       } else {
-        setGameData({ status: "NO_ACTIVE_GAME", isLive: false, score: { patriots: "0", opponent: "0", oppName: "TBD" }, odds: { details: "OFF_BOARD" }, scoring: [], situation: {}, winProb: 50 });
+        setGameData({ status: "NO_ACTIVE_GAME", isLive: false, score: { patriots: "0", opponent: "0", oppName: "TBD" }, odds: { details: "OFF_BOARD" }, scoring: [], situation: {}, winProb: 50, weather: { displayValue: "N/A" } });
       }
     } catch (error) {
       console.error("Telemetry Error:", error);
     } finally {
       setLoading(false);
     }
-  }, [selectedPlayer.id]); // SE RECARGA CUANDO CAMBIAS EL ID DEL JUGADOR
+  }, [selectedPlayer.id]);
 
   useEffect(() => {
     fetchProData();
@@ -104,49 +144,54 @@ export default function PatriotsDashboard() {
     return () => clearInterval(interval);
   }, [fetchProData]);
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-blue-500 font-mono animate-pulse">ESTABLISHING_PRO_LINK...</div>;
+  if (loading) return <MatrixLoading />;
 
   return (
     <main className="min-h-screen bg-[#000d16] text-slate-100 p-4 lg:p-8 font-mono overflow-x-hidden">
+      {/* HEADER COMPLETO */}
       <header className="flex flex-col lg:flex-row justify-between items-start border-b border-blue-900/50 pb-6 mb-8 gap-4">
         <div className="flex items-center gap-5">
           <div className="bg-red-600 p-3 transform -skew-x-12 shadow-[0_0_15px_red]"><Shield size={32} /></div>
           <div>
             <h1 className="text-3xl font-black italic tracking-tighter uppercase">Patriots_Command_Center_v2.5</h1>
-            <div className="flex gap-4 mt-2 text-[10px] font-bold">
+            <div className="flex flex-wrap gap-4 mt-2 text-[10px] font-bold">
                <span className={`${gameData?.isLive ? 'text-green-500 animate-pulse' : 'text-slate-600'} flex items-center gap-1`}>
                  <Activity size={12}/> {gameData?.isLive ? 'LIVE_FEED' : 'STANDBY'}
                </span>
+               <span className="text-blue-400 flex items-center gap-1 uppercase tracking-widest"><CloudRain size={12}/> {gameData?.weather?.displayValue || 'Atmosphere_Stable'}</span>
                <span className="text-yellow-500 border border-yellow-900/50 px-2 uppercase font-black">Odds: {gameData?.odds?.details}</span>
             </div>
           </div>
         </div>
-        <div className="bg-slate-900/50 border border-blue-500/20 p-3 px-6 text-center">
-          <p className="text-[9px] text-slate-500 uppercase italic">Status</p>
-          <p className="text-2xl font-black text-blue-400">{gameData?.status || 'OFFLINE'}</p>
+        <div className="bg-slate-900/50 border border-blue-500/20 p-3 px-6 text-center rounded-sm">
+          <p className="text-[9px] text-slate-500 uppercase italic">Status_Clock</p>
+          <p className="text-2xl font-black text-blue-400 tracking-widest">{gameData?.status || 'OFFLINE'}</p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* COLUMNA IZQUIERDA */}
         <div className="lg:col-span-4 space-y-6">
-          {/* MARCADOR */}
           <section className="bg-slate-950 border border-blue-900/30 p-6 rounded-sm shadow-2xl">
             <div className="flex justify-between items-center mb-6">
                <div className="text-center">
-                 <p className="text-blue-500 text-xs font-black">NE</p>
-                 <p className="text-7xl font-black">{gameData?.score.patriots}</p>
-                 <div className="flex gap-1 justify-center mt-2">
+                 <p className="text-blue-500 text-xs font-black">PATS</p>
+                 <p className="text-7xl font-black leading-none">{gameData?.score.patriots}</p>
+                 <div className="flex gap-1 justify-center mt-3">
                    {[...Array(3)].map((_, i) => <div key={i} className={`h-1 w-3 ${i < (gameData?.timeouts?.pats || 0) ? 'bg-yellow-400 shadow-[0_0_5px_yellow]' : 'bg-slate-800'}`} />)}
                  </div>
                </div>
-               <div className="text-slate-800 font-black text-xl italic text-center">VS</div>
+               <div className="text-slate-800 font-black text-xl italic">VS</div>
                <div className="text-center opacity-60">
-                 <p className="text-slate-500 text-xs font-bold mb-1">{gameData?.score.oppName}</p>
-                 <p className="text-7xl font-black">{gameData?.score.opponent}</p>
+                 <p className="text-slate-500 text-xs font-black">{gameData?.score.oppName}</p>
+                 <p className="text-7xl font-black leading-none">{gameData?.score.opponent}</p>
                </div>
             </div>
-            <div className="bg-black/50 p-4 border border-slate-900 rounded-sm">
-              <p className="text-[9px] text-blue-500 font-black uppercase mb-2 italic">Win_Prob_Ticker</p>
+            {/* WIN PROB STOCK CHART */}
+            <div className="bg-black/50 p-4 border border-slate-900 rounded-sm mt-4">
+              <p className="text-[9px] text-blue-500 font-black uppercase mb-2 italic flex justify-between">
+                Win_Prob_Ticker <span>{gameData?.winProb.toFixed(1)}%</span>
+              </p>
               <div className="h-[60px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={winProbHistory.length > 1 ? winProbHistory : [{prob: 50}, {prob: 50}]}>
@@ -158,7 +203,7 @@ export default function PatriotsDashboard() {
             </div>
           </section>
 
-          {/* 2. TARGET SELECTOR UNIT (NUEVO) */}
+          {/* SELECTOR DE OBJETIVOS RECUPERADO */}
           <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm shadow-xl">
             <h3 className="text-[10px] font-black text-white mb-4 uppercase tracking-[0.2em] flex items-center gap-2 text-blue-400">
               <Crosshair size={14}/> Target_Selection_Unit
@@ -191,13 +236,22 @@ export default function PatriotsDashboard() {
           </section>
         </div>
 
+        {/* COLUMNA DERECHA */}
         <div className="lg:col-span-8 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <section className="bg-[#020814] border border-blue-900/20 p-6 rounded-sm shadow-2xl">
-              <div className="flex items-center gap-3 mb-6"><Target className="text-blue-500" /><h2 className="text-lg font-black uppercase italic">Tactical_Drive</h2></div>
-              <div className="bg-black/40 p-4 italic text-xs border-l-4 border-blue-600 min-h-[100px]">
-                {gameData?.situation?.lastPlay?.text || "Awaiting tactical feed..."}
+            {/* TACTICAL DRIVE CON CAMPO RECUPERADO */}
+            <section className="bg-[#020814] border border-blue-900/20 p-6 rounded-sm shadow-2xl relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3"><Target className="text-blue-500" /><h2 className="text-lg font-black uppercase italic">Tactical_Drive</h2></div>
+                <div className={`text-[8px] font-black px-2 py-1 border rounded-sm ${gameData?.isLive ? 'border-green-900 text-green-500' : 'border-slate-800 text-slate-600'}`}>
+                   {gameData?.isLive ? 'STREAM_ACTIVE' : 'FEED_STANDBY'}
+                </div>
               </div>
+              <div className="bg-black/40 p-4 italic text-[11px] border-l-4 border-blue-600 leading-relaxed min-h-[60px] text-slate-300">
+                {gameData?.situation?.lastPlay?.text || "Awaiting stadium telemetry feed..."}
+              </div>
+              {/* CAMPO FÚTBOL RECUPERADO */}
+              <TacticalField yardLine={gameData?.situation?.yardLine} distance={gameData?.situation?.distance} possession={gameData?.possession} />
             </section>
 
             <section className="bg-slate-950 border border-slate-800 p-6 rounded-sm">
@@ -208,12 +262,12 @@ export default function PatriotsDashboard() {
                     <span className="text-slate-300">{inj.athlete.displayName} <span className="text-blue-500">[{inj.athlete.position.abbreviation}]</span></span>
                     <span className="text-red-500 font-bold uppercase">{inj.status}</span>
                   </div>
-                )) : <p className="text-[10px] text-slate-600">No major injuries reported.</p>}
+                )) : <p className="text-[10px] text-slate-600 italic">Medical scanning complete. No major injuries.</p>}
               </div>
             </section>
           </div>
 
-          {/* BIOMETRIC FEED DINÁMICO */}
+          {/* BIOMETRIC FEED */}
           <section className="bg-gradient-to-r from-slate-950 to-blue-950/20 border-t-2 border-red-600 p-6 shadow-2xl flex flex-col md:flex-row items-center gap-8">
              <div className="relative">
                 <img 
@@ -222,7 +276,7 @@ export default function PatriotsDashboard() {
                   className="w-28 h-28 rounded-full border-2 border-blue-600 bg-slate-900 object-cover shadow-[0_0_15px_cyan]"
                   onError={(e:any) => e.target.src = 'https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/0.png'}
                 />
-                <div className="absolute -bottom-2 -right-2 bg-blue-600 text-[8px] font-black px-2 py-1 uppercase shadow-lg tracking-widest">ACTIVE_OBJ</div>
+                <div className="absolute -bottom-2 -right-2 bg-blue-600 text-[8px] font-black px-2 py-1 uppercase shadow-lg">ACTIVE_OBJ</div>
              </div>
              <div className="flex-1 text-center md:text-left">
                 <p className="text-[10px] text-slate-500 font-black uppercase italic mb-1 tracking-[0.3em]">Biometric_Feed:</p>
@@ -242,6 +296,17 @@ export default function PatriotsDashboard() {
                   <p className="text-[9px] text-slate-500 uppercase font-black">Status</p>
                   <p className="text-2xl font-black text-green-500 uppercase">{playerBio?.status?.type || 'ACT'}</p>
                 </div>
+             </div>
+          </section>
+
+          {/* SCORE HISTORY TELEMETRY */}
+          <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm h-[200px]">
+             <div className="flex items-center gap-2 mb-4 text-blue-500/50">
+                <Activity size={16} />
+                <span className="text-[10px] font-bold uppercase tracking-widest italic">Score_History_Telemetry</span>
+             </div>
+             <div className="h-[120px] w-full">
+               <ScoreTrendChart data={scoreHistory} />
              </div>
           </section>
         </div>
