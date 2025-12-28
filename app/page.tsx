@@ -2,15 +2,15 @@
 
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { Shield, List, Gauge, Users, TrendingUp, Zap, LineChart as LucideChart, MousePointer2, Radio } from 'lucide-react';
+import { Shield, TrendingUp, Zap, MousePointer2, Radio, CloudRain, Activity, ChevronRight, Target, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+// Importamos los componentes de Recharts para el nuevo gráfico de stock
+import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip } from 'recharts';
 
-// CARGA DINÁMICA CORREGIDA: Eliminamos el cierre prematuro de la línea 11
 const ScoreTrendChart = dynamic(() => import('./ScoreTrendChart'), { 
   ssr: false,
   loading: () => <div className="h-[150px] w-full bg-slate-900/20 animate-pulse rounded" />
 });
 
-// COMPONENTE: EFECTO MATRIX
 const MatrixLoading = () => (
   <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono overflow-hidden relative">
     <div className="absolute inset-0 opacity-20 pointer-events-none text-green-500 text-[10px] leading-none overflow-hidden break-all">
@@ -24,7 +24,6 @@ const MatrixLoading = () => (
   </div>
 );
 
-// COMPONENTE: CAMPO TÁCTICO
 const TacticalField = ({ yardLine, distance, possession }: any) => {
   const [side, lineStr] = yardLine ? yardLine.split(' ') : ['NE', '50'];
   const line = parseInt(lineStr) || 50;
@@ -40,7 +39,7 @@ const TacticalField = ({ yardLine, distance, possession }: any) => {
         <span className="text-red-500/20 font-black -rotate-90 text-[10px] tracking-[0.5em]">OPP</span>
       </div>
       <div className="relative w-[84%] h-full ml-[8%] flex justify-between">
-        {[10, 20, 30, 40, 50, 40, 30, 20, 10].map((y, i) => (
+        {[10, 20, 30, 40, 50, 40, 30, 20, 10].map((_, i) => (
           <div key={i} className="h-full w-px bg-slate-800/40"></div>
         ))}
         <div className="absolute top-0 h-full w-1 bg-blue-500 shadow-[0_0_15px_cyan] z-20" style={{ left: `${absoluteYardLine}%` }}></div>
@@ -54,7 +53,8 @@ export default function PatriotsDashboard() {
   const [gameData, setGameData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [scoreHistory, setScoreHistory] = useState<any>([]);
-  const [rosterTab, setRosterTab] = useState<'offense' | 'defense'>('offense');
+  // 1. NUEVO ESTADO: Historial para el Stock Chart de Probabilidad
+  const [winProbHistory, setWinProbHistory] = useState<any>([]);
   const [selectedPlayer, setSelectedPlayer] = useState({ name: "Drake Maye", pos: "QB" });
 
   const fetchLiveStats = async () => {
@@ -82,45 +82,46 @@ export default function PatriotsDashboard() {
 
         const boxRes = await fetch(`https://nfl-api1.p.rapidapi.com/v2/nfl/boxscore?id=${gameId}`, options);
         const boxData = await boxRes.json();
-        const patsStats = boxData.players?.find((p: any) => p.team.abbreviation === 'NE');
+        const neBoxStats = boxData.teams?.find((t: any) => t.team.abbreviation === 'NE')?.statistics;
+        const weather = boxData.gameInfo?.weather;
 
-        let playerStats: any = { yards: "0", tds: "0", extra: "0/0", label: "STATS" };
-        patsStats?.statistics?.forEach((cat: any) => {
-          const athlete = cat.athletes?.find((a: any) => a.athlete.displayName === selectedPlayer.name);
-          if (athlete) {
-            if (cat.name === 'passing') playerStats = { yards: athlete.stats[2], tds: athlete.stats[3], extra: athlete.stats[0], label: "PASS_YDS" };
-            if (cat.name === 'rushing') playerStats = { yards: athlete.stats[1], tds: athlete.stats[2], extra: athlete.stats[0], label: "RUSH_YDS" };
-            if (cat.name === 'receiving') playerStats = { yards: athlete.stats[1], tds: athlete.stats[2], extra: athlete.stats[0], label: "REC_YDS" };
-          }
-        });
-
+        // Historial de marcador
         setScoreHistory((prev: any) => {
           const newPoint = { time: patsEvent.status.displayClock, pats: parseInt(patsTeam.score), opp: parseInt(oppTeam.score) };
-          if (prev.length > 0 && prev[prev.length - 1].pats === newPoint.pats) return prev;
-          return [...prev, newPoint];
+          if (prev.length > 0 && prev[prev.length - 1].pats === newPoint.pats && prev[prev.length - 1].opp === newPoint.opp) return prev;
+          return [...prev.slice(-15), newPoint];
+        });
+
+        // 2. LÓGICA DE CAPTURA: Actualizar el historial de probabilidad (Stock Chart)
+        const currentProb = patsTeam.winProbability || 50;
+        setWinProbHistory((prev: any) => {
+          const newEntry = { time: patsEvent.status.displayClock, prob: currentProb };
+          // Solo agregar si el valor cambió o si es el primer dato
+          if (prev.length > 0 && prev[prev.length - 1].prob === currentProb) return prev;
+          return [...prev.slice(-30), newEntry]; // Guardamos los últimos 30 movimientos
         });
 
         setGameData({
-          status: "LIVE", teamName: "NEW ENGLAND PATRIOTS",
+          status: patsEvent.status.type.detail,
+          weather: { temp: weather?.temperature || "72", cond: weather?.displayValue || "Clear" },
           score: { patriots: patsTeam.score, opponent: oppTeam.score, oppName: oppTeam.team.abbreviation },
+          timeouts: { pats: patsTeam.timeouts || 0, opp: oppTeam.timeouts || 0 },
           clock: `${patsEvent.status.displayClock} / ${patsEvent.status.period}Q`,
           possession: sit?.possession === patsTeam.id ? 'NE' : oppTeam.team.abbreviation,
           yardLine: sit?.lastPlay?.text.includes('at NE') ? `NE ${sit.yardLine}` : `OPP ${sit.yardLine}`,
-          down: sit?.down || 0, distance: sit?.distance || 0, winProb: patsTeam.winProbability || 50,
-          playerMonitor: { ...selectedPlayer, ...playerStats },
+          down: sit?.down || 0, distance: sit?.distance || 0, winProb: currentProb,
+          efficiency: {
+            thirdDown: neBoxStats?.find((s: any) => s.name === 'thirdDownEff')?.displayValue || "0/0",
+            turnovers: neBoxStats?.find((s: any) => s.name === 'turnovers')?.displayValue || "0"
+          },
+          lastPlayText: sit?.lastPlay?.text || "Waiting for next snap...",
           roster: { 
-            offense: [{ pos: "QB", name: "Drake Maye" }, { pos: "RB", name: "Rhamondre Stevenson" }, { pos: "WR", name: "Ja'Lynn Polk" }],
-            defense: [{ pos: "CB", name: "Christian Gonzalez" }, { pos: "S", name: "Kyle Dugger" }]
+            offense: [{ pos: "QB", name: "Drake Maye" }, { pos: "RB", name: "R. Stevenson" }, { pos: "WR", name: "J. Polk" }],
+            defense: [{ pos: "CB", name: "C. Gonzalez" }, { pos: "S", name: "Kyle Dugger" }]
           }
         });
       } else {
-        setGameData({
-          status: "OFFLINE", teamName: "NEW ENGLAND PATRIOTS",
-          score: { patriots: "0", opponent: "0", oppName: "TBD" },
-          clock: "NO_GAME_ACTIVE", possession: "N/A", yardLine: "50", down: 0, distance: 0, winProb: 0,
-          playerMonitor: { ...selectedPlayer, yards: "0", tds: "0", extra: "0/0", label: "YARDS" },
-          roster: { offense: [{ pos: "QB", name: "Drake Maye" }, { pos: "RB", name: "R. Stevenson" }], defense: [{ pos: "CB", name: "C. Gonzalez" }] }
-        });
+          setGameData({ status: "OFFLINE", score: { patriots: "0", opponent: "0", oppName: "TBD" }, clock: "NO_GAME", weather: { temp: "--", cond: "--" }, timeouts: { pats: 3, opp: 3 }, efficiency: { thirdDown: "0/0", turnovers: "0" }, roster: { offense: [], defense: [] }, winProb: 0, lastPlayText: "No active game data." });
       }
       setLoading(false);
     } catch (error) {
@@ -133,7 +134,7 @@ export default function PatriotsDashboard() {
     fetchLiveStats();
     const interval = setInterval(fetchLiveStats, 45000);
     return () => clearInterval(interval);
-  }, [selectedPlayer]);
+  }, []);
 
   if (loading || !gameData) return <MatrixLoading />;
 
@@ -141,57 +142,97 @@ export default function PatriotsDashboard() {
     <main className="min-h-screen bg-[#000d16] text-slate-100 p-4 lg:p-8 font-mono overflow-x-hidden">
       <header className="flex flex-col lg:flex-row justify-between items-start border-b border-blue-900/50 pb-6 mb-8 gap-4">
         <div className="flex items-center gap-5">
-          <div className="bg-red-600 p-3 transform -skew-x-12"><Shield className="text-white fill-white" size={32} /></div>
+          <div className="bg-red-600 p-3 transform -skew-x-12 shadow-[0_0_20px_rgba(220,38,38,0.3)]"><Shield className="text-white fill-white" size={32} /></div>
           <div>
-            <h1 className="text-3xl lg:text-5xl font-black tracking-tighter leading-none italic">{gameData.teamName}</h1>
-            <div className="flex items-center gap-2 mt-2">
-              <Radio size={12} className={gameData.status === 'LIVE' ? "text-green-500 animate-pulse" : "text-slate-600"} />
-              <p className="text-blue-500 text-[10px] tracking-[0.4em] font-bold uppercase">{gameData.status}_SIGNAL</p>
+            <h1 className="text-3xl lg:text-5xl font-black tracking-tighter italic">PATRIOTS_TELEMETRY</h1>
+            <div className="flex items-center gap-4 mt-2">
+              <span className="flex items-center gap-1 text-green-500 text-[10px] font-bold tracking-widest animate-pulse"><Activity size={12}/> LIVE_UPLINK</span>
+              <span className="flex items-center gap-1 text-slate-500 text-[10px] uppercase font-bold"><CloudRain size={12}/> {gameData.weather.temp}°F | {gameData.weather.cond}</span>
             </div>
           </div>
         </div>
         <div className="bg-slate-900/50 border border-blue-500/20 p-3 px-6 rounded-sm text-center">
-          <p className="text-[9px] text-slate-500 mb-1 font-bold italic uppercase">Clock</p>
-          <p className="text-2xl font-black tracking-tighter">{gameData.clock}</p>
+          <p className="text-[9px] text-slate-500 mb-1 font-bold italic uppercase">System_Clock</p>
+          <p className="text-2xl font-black tracking-tighter text-blue-400">{gameData.clock}</p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-4 space-y-6">
-          <section className="bg-gradient-to-b from-slate-900 to-black border border-blue-900/40 p-8 rounded-sm text-center shadow-2xl">
+          <section className="bg-gradient-to-b from-slate-900 to-black border border-blue-900/40 p-8 rounded-sm text-center shadow-2xl relative">
             <div className="flex justify-between items-center relative z-10">
-              <div><p className="text-blue-500 font-black mb-1 italic text-sm">PATS</p><p className="text-8xl font-black tracking-tighter leading-none">{gameData.score.patriots}</p></div>
-              <div className="text-slate-800 font-black text-2xl mx-2">VS</div>
-              <div className="opacity-60">
-                <p className="text-slate-500 font-black mb-1 italic text-sm">{gameData.score.oppName}</p><p className="text-8xl font-black tracking-tighter leading-none">{gameData.score.opponent}</p>
+              <div className="text-center">
+                <p className="text-blue-500 font-black mb-1 italic text-sm">PATS</p>
+                <p className="text-8xl font-black tracking-tighter leading-none">{gameData.score.patriots}</p>
+                <div className="flex gap-1 justify-center mt-3">
+                   {[...Array(3)].map((_, i) => (
+                     <div key={i} className={`h-1.5 w-4 ${i < gameData.timeouts.pats ? 'bg-yellow-400 shadow-[0_0_8px_#facc15]' : 'bg-slate-800'}`}></div>
+                   ))}
+                </div>
+              </div>
+              <div className="text-slate-800 font-black text-2xl mx-2 font-mono">VS</div>
+              <div className="opacity-60 text-center">
+                <p className="text-slate-500 font-black mb-1 italic text-sm">{gameData.score.oppName}</p>
+                <p className="text-8xl font-black tracking-tighter leading-none">{gameData.score.opponent}</p>
+                <div className="flex gap-1 justify-center mt-3">
+                   {[...Array(3)].map((_, i) => (
+                     <div key={i} className={`h-1.5 w-4 ${i < gameData.timeouts.opp ? 'bg-red-600' : 'bg-slate-800'}`}></div>
+                   ))}
+                </div>
               </div>
             </div>
           </section>
 
-          <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm min-h-[210px]">
-             <div className="flex items-center gap-2 mb-4 text-blue-500">
-                <LucideChart size={16} />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-white italic">Score Trend Analytics</span>
-             </div>
-             <div className="h-[150px] w-full">
-               <ScoreTrendChart data={scoreHistory} />
-             </div>
+          {/* 3. UI: CUADRO DE WIN PROBABILITY ESTILO STOCK CHART */}
+          <section className="bg-black border border-blue-900/30 rounded-sm overflow-hidden shadow-2xl">
+            <div className="p-5 flex justify-between items-end border-b border-blue-900/20 bg-slate-950">
+              <div>
+                <p className="text-[10px] text-blue-500 font-black uppercase tracking-[0.2em] mb-1 italic">Win_Prob_Index</p>
+                <div className="flex items-baseline gap-2">
+                  <h2 className="text-5xl font-black italic tracking-tighter text-white">{gameData.winProb.toFixed(1)}%</h2>
+                  <div className={`flex items-center text-xs font-bold ${gameData.winProb >= 50 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {gameData.winProb >= 50 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}
+                    {gameData.winProb >= 50 ? 'BULLISH' : 'BEARISH'}
+                  </div>
+                </div>
+              </div>
+              <TrendingUp size={24} className="text-blue-900/50 mb-1" />
+            </div>
+            {/* Gráfico de Área Estilo Stock */}
+            <div className="h-[120px] w-full bg-[#02080e] relative pt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={winProbHistory.length > 0 ? winProbHistory : [{prob: 50}, {prob: 50}]}>
+                  <defs>
+                    <linearGradient id="colorProb" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <Tooltip contentStyle={{backgroundColor: '#000', border: '1px solid #1e3a8a', fontSize: '10px'}} itemStyle={{color: '#3b82f6'}} />
+                  <Area 
+                    type="monotone" 
+                    dataKey="prob" 
+                    stroke="#3b82f6" 
+                    strokeWidth={2}
+                    fillOpacity={1} 
+                    fill="url(#colorProb)" 
+                    isAnimationActive={true}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+              {/* Línea base del 50% */}
+              <div className="absolute top-1/2 left-0 w-full h-px border-t border-dashed border-slate-800 pointer-events-none"></div>
+            </div>
           </section>
 
-          <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm">
-             <div className="flex justify-between items-center mb-4 text-blue-400">
-                <span className="text-[10px] font-bold uppercase tracking-widest italic">Target Selector</span>
+          <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm space-y-3">
+             <div className="flex justify-between text-[10px] border-b border-slate-900 pb-2">
+                <span className="text-slate-500 font-bold uppercase">3rd Down Efficiency</span>
+                <span className="text-white font-black">{gameData.efficiency.thirdDown}</span>
              </div>
-             <div className="space-y-1 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-blue-900">
-               {gameData.roster[rosterTab].map((p: any, i: number) => (
-                 <button key={i} onClick={() => setSelectedPlayer({ name: p.name, pos: p.pos })}
-                  className={`w-full flex justify-between p-2 text-[10px] border-b border-slate-900 transition-all ${selectedPlayer.name === p.name ? 'bg-blue-900/40 border-l-4 border-l-blue-500 text-white font-bold' : 'text-slate-400 hover:bg-slate-900'}`}
-                 >
-                   <span className="font-black w-6">{p.pos}</span>
-                   <span className="flex-1 text-left ml-4 italic">{p.name}</span>
-                   {selectedPlayer.name === p.name && <MousePointer2 size={10} className="text-blue-500 animate-pulse" />}
-                 </button>
-               ))}
+             <div className="flex justify-between text-[10px] border-b border-slate-900 pb-2">
+                <span className="text-slate-500 font-bold uppercase">Offensive Turnovers</span>
+                <span className="text-red-500 font-black">{gameData.efficiency.turnovers}</span>
              </div>
           </section>
         </div>
@@ -199,11 +240,11 @@ export default function PatriotsDashboard() {
         <div className="lg:col-span-8 space-y-6">
           <section className="bg-[#02080e] border border-blue-900/30 p-8 rounded-sm shadow-2xl relative">
             <div className="flex justify-between items-center mb-8">
-              <div className="flex items-center gap-3"><TrendingUp className="text-blue-500" size={20} /><h2 className="text-xl font-black uppercase tracking-widest italic">Tactical Drive Data</h2></div>
-              <div className="text-right border-r-4 border-blue-600 pr-6"><p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Win Prob</p><p className="text-4xl font-black leading-none">{gameData.winProb}%</p></div>
+              <div className="flex items-center gap-3 text-blue-500"><Target size={20} /><h2 className="text-xl font-black uppercase tracking-widest italic text-white">Tactical Drive Monitor</h2></div>
+              <div className="text-[10px] text-blue-900 font-black px-3 py-1 border border-blue-900/30 rounded-full animate-pulse tracking-widest">REALTIME_DATA_FLOW</div>
             </div>
             <div className="grid grid-cols-4 gap-4 mb-8">
-               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase italic">Down</p><p className="text-2xl font-black">{gameData.down}</p></div>
+               <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase italic">Down</p><p className="text-2xl font-black">{gameData.down}º</p></div>
                <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase italic">To Go</p><p className="text-2xl font-black text-yellow-400">{gameData.distance}</p></div>
                <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase italic">Ball On</p><p className="text-2xl font-black">{gameData.yardLine}</p></div>
                <div className="bg-black/40 p-3 border-l-2 border-slate-800"><p className="text-[9px] text-slate-500 uppercase font-bold uppercase italic">Pos</p><p className="text-2xl font-black text-blue-400">{gameData.possession}</p></div>
@@ -211,17 +252,24 @@ export default function PatriotsDashboard() {
             <TacticalField yardLine={gameData.yardLine} distance={gameData.distance} possession={gameData.possession} />
           </section>
 
-          <section className="bg-gradient-to-r from-slate-950 to-blue-950/20 border-t-4 border-red-600 p-8 shadow-2xl relative group">
-            <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-              <div>
-                <p className="text-[10px] text-slate-500 uppercase font-black mb-1 italic">Target Monitoring:</p>
-                <h3 className="text-4xl font-black text-white italic tracking-tighter leading-none">{gameData.playerMonitor.name} <span className="text-blue-500 text-lg ml-2">[{gameData.playerMonitor.pos}]</span></h3>
-              </div>
-              <div className="flex gap-12 text-center">
-                <div className="text-center"><p className="text-[10px] text-slate-500 font-bold mb-1 uppercase italic tracking-widest">{gameData.playerMonitor.label || "YARDS"}</p><p className="text-5xl font-black text-white tracking-tighter leading-none">{gameData.playerMonitor.yards}</p></div>
-                <div className="text-center"><p className="text-[10px] text-slate-500 font-bold mb-1 uppercase italic tracking-widest">TOUCHDOWNS</p><p className="text-5xl font-black text-red-500 tracking-tighter leading-none">{gameData.playerMonitor.tds}</p></div>
-              </div>
-            </div>
+          <section className="bg-slate-950 border border-slate-800 p-6 rounded-sm">
+             <div className="flex items-center gap-2 mb-4 text-blue-400 border-b border-blue-900/30 pb-2">
+                <ChevronRight size={16} />
+                <span className="text-[10px] font-black uppercase tracking-tighter italic text-white">Live Tactical Feed</span>
+             </div>
+             <div className="text-sm italic text-slate-300 font-mono leading-relaxed bg-black/50 p-4 border-l-2 border-blue-600">
+                {gameData.lastPlayText}
+             </div>
+          </section>
+
+          <section className="bg-slate-950 border border-slate-800 p-5 rounded-sm h-[200px]">
+             <div className="flex items-center gap-2 mb-4 text-blue-500">
+                <Activity size={16} />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white italic">Score History Stream</span>
+             </div>
+             <div className="h-[120px] w-full">
+               <ScoreTrendChart data={scoreHistory} />
+             </div>
           </section>
         </div>
       </div>
