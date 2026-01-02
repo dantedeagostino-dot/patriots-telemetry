@@ -18,7 +18,7 @@ const CONFIG = {
   // ⚡️ INTERRUPTOR DE EMERGENCIA ⚡️
   // true = Usa datos falsos y bonitos (Ideal mientras arreglan la API)
   // false = Intenta conectarse a la API real
-  FORCE_DEMO_MODE: true 
+  FORCE_DEMO_MODE: false 
 };
 
 // --- 2. COMPONENTES AUXILIARES ---
