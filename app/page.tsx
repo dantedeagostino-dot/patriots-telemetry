@@ -16,7 +16,7 @@ const CONFIG = {
   
   API_HOST: "nfl-api-data.p.rapidapi.com",
   TEAM_ID: "17", // New England Patriots ID
-  REFRESH_RATE: 30000 // Actualiza cada 30 segundos
+  REFRESH_RATE: 15000 // Actualiza cada 15 segundos
 };
 
 // --- 2. COMPONENTES AUXILIARES ---
@@ -127,9 +127,9 @@ export default function PatriotsTelemetryPro() {
 
     try {
       const headers = { 'X-RapidAPI-Key': CONFIG.API_KEY, 'X-RapidAPI-Host': CONFIG.API_HOST };
-      
-      // ✅ FIX: Forzamos la temporada 2024. La API fallaba al pedir 2025 (como se veía en tu error).
-      const seasonYear = "2024";
+
+      // ✅ FIX: Forzamos la temporada 2025.
+      const seasonYear = "2025";
 
       // A. OBTENER CALENDARIO
       const scheduleRes = await fetch(`https://${CONFIG.API_HOST}/nfl-schedule-team?teamId=${CONFIG.TEAM_ID}&season=${seasonYear}`, { headers });
