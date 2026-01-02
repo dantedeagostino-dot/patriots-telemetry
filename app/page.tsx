@@ -81,8 +81,8 @@ export default function PatriotsTelemetryPro() {
     setGame({
       status: 'FINAL',
       id: "game-sim-01",
-      home: "NE", away: "BUF", // Patriots vs Bills
-      scoreH: 24, scoreA: 21,
+      home: "Pats", away: "Jets", // Patriots vs Jets
+      scoreH: 42, scoreA: 10,
       quarter: "OT", clock: "00:00",
       playDescription: "GAME OFFICIAL • PATRIOTS WIN AT HOME (OT) • MAYE TO HENRY TD",
       winProb: 100,
@@ -90,9 +90,9 @@ export default function PatriotsTelemetryPro() {
       weather: "28°F Snow", stadium: "Gillette Stadium",
       odds: { spread: "BUF -4.5", overUnder: "42.5" },
       stats: {
-        totalYards: { h: 385, a: 340 },
-        passing: { h: 265, a: 210 },
-        rushing: { h: 120, a: 130 },
+        totalYards: { h: 440, a: 340 },
+        passing: { h: 285, a: 143 },
+        rushing: { h: 155, a: 164},
         turnovers: { h: 0, a: 2 }
       }
     });
@@ -110,7 +110,7 @@ export default function PatriotsTelemetryPro() {
     ]);
 
     setSchedule([
-      { id: 1, week: 18, opponent: "vs DOLPHINS", date: "Jan 05 • 1:00 PM", venue: "Gillette Stadium", ticket: "Home" },
+      { id: 1, week: 18, opponent: "vs DOLPHINS", date: "Jan 04 • 1:00 PM", venue: "Gillette Stadium", ticket: "Home" },
       { id: 2, week: "WC", opponent: "@ CHIEFS", date: "Jan 12 • TBD", venue: "Arrowhead Stadium", ticket: "Away" },
       { id: 3, week: "DIV", opponent: "vs RAVENS", date: "TBD", venue: "Gillette Stadium", ticket: "Home" }
     ]);
