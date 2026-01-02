@@ -128,8 +128,8 @@ export default function PatriotsTelemetryPro() {
     try {
       const headers = { 'X-RapidAPI-Key': CONFIG.API_KEY, 'X-RapidAPI-Host': CONFIG.API_HOST };
 
-      // ✅ FIX: Forzamos la temporada 2025.
-      const seasonYear = "2025";
+      // ✅ FIX: Forzamos la temporada 2026.
+      const seasonYear = "2026";
 
       // A. OBTENER CALENDARIO
       const scheduleRes = await fetch(`https://${CONFIG.API_HOST}/nfl-schedule-team?teamId=${CONFIG.TEAM_ID}&season=${seasonYear}`, { headers });
