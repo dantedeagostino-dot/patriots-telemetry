@@ -14,7 +14,7 @@ const CONFIG = {
   // 🔴 IMPORTANTE: La variable DEBE empezar con NEXT_PUBLIC_ para funcionar en el navegador
   API_KEY: process.env.NEXT_PUBLIC_RAPIDAPI_KEY || "", 
   
-  API_HOST: "nfl-api-data.p.rapidapi.com",
+  API_HOST: "nfl-api1.p.rapidapi.com"
   TEAM_ID: "17", // New England Patriots ID
   REFRESH_RATE: 15000 // Actualiza cada 15 segundos
 };
